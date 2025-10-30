@@ -1,17 +1,37 @@
-import socket 
-import time 
+import socket
 
-#Configration 
-SERVER_IP = "127.0.0.1"   # Localhost for testing
-SERVER_PORT = 5005        # UDP port
-BUFFER_SIZE = 1024        # Max bytes to read per packet
+# Server settings
+SERVER_IP = "192.168.1.102"
+SERVER_PORT = 5005
+ADDR = (SERVER_IP, SERVER_PORT)
 
 # Create UDP socket
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server.bind((SERVER_IP, SERVER_PORT))
-print(f"[SERVER] Running on {SERVER_IP}:{SERVER_PORT}")
-print("[SERVER] Waiting for clients...")
+server.bind(ADDR)
 
-#dic for connected clients
-clients = {}
+print(f"[SERVER] Listening on {ADDR}")
 
+while True:
+    try:
+        # Receive data from client
+        data, client_addr = server.recvfrom(1024)
+        msg = data.decode()
+        print(f"[SERVER] Received from {client_addr}: {msg}")
+
+        # Prepare reply message
+        if msg.startswith("INIT"):
+            reply = "ACK: Server ready!"
+        elif msg.startswith("DATA"):
+            reply = f"ACK: Data received -> {msg}"
+        else:
+            reply = "ERR: Unknown message type"
+
+        # Send reply
+        server.sendto(reply.encode(), client_addr)
+        print(f"[SERVER] Sent reply to {client_addr}\n")
+
+    except KeyboardInterrupt:
+        print("\n[SERVER] Shutting down...")
+        break
+
+server.close()
