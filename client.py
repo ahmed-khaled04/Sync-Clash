@@ -18,7 +18,7 @@ print(f"[CLIENT] Sent INIT message to {ADDR}")
 
 #Send Data Messages
 for i in range(3):
-    data_msg = f"DATA: Position update A7A {i}"
+    data_msg = f"DATA: Position update (x={i*2}, y={i*3})"
     client.sendto(data_msg.encode() , ADDR)
     print(f"[CLIENT] Sent: {data_msg}")
     time.sleep(1)
