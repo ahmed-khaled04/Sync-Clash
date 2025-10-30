@@ -1,0 +1,8 @@
+[CLIENT] Sent INIT message to ('192.168.187.1', 5005)
+[CLIENT] Sent: DATA: Position update (x=0, y=0)
+[CLIENT] recieved reply:  ACK: Server ready!
+[CLIENT] Sent: DATA: Position update (x=2, y=3)
+[CLIENT] recieved reply:  ACK: Data received -> DATA: Position update (x=0, y=0)
+[CLIENT] Sent: DATA: Position update (x=4, y=6)
+[CLIENT] recieved reply:  ACK: Data received -> DATA: Position update (x=2, y=3)
+[CLIENT] Connection Closed

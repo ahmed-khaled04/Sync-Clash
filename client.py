@@ -3,7 +3,7 @@ import time
 
 #Server Settings
 
-SERVER_IP = "192.168.1.102"
+SERVER_IP = "192.168.187.1"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP , SERVER_PORT)
 

@@ -15,20 +15,24 @@ This Phase 1 version demonstrates simple **INIT** and **DATA** message exchange 
 
 ## 📂 File Structure
 
-````
+```
 Sync-Clash/
 │
 ├── server.py         # Runs UDP server
 ├── client.py         # Sends INIT and DATA packets
+├── run_baseline.sh   # Baseline test
 
+```
 
 ## ▶️ How to Run
 
 ### 🖥️ 1. Run the Server
+
 Open a terminal in the project folder and start:
+
 ```bash
 python server.py
-````
+```
 
 Expected output:
 
@@ -53,10 +57,31 @@ Expected output:
 ...
 ```
 
-## 🎥 Demo Video
+## 🧪 Run the Automated Baseline Test
 
-A short 5-minute demo of Phase 1 is available here:  
-👉 **[Demo Video Link (Replace this with your URL)]**
+This test automatically starts the server, runs the client, and saves both outputs to log files.
+It demonstrates the local baseline scenario (no loss, no delay).
+
+Run All Commands In Bash if you are using Windows.
+
+```` `
+
+### 1.Make the script executable
+
+    chmod +x run_baseline.sh
+
+### 2.Run The Test
+
+    ./run_baseline.sh
+
+### 3.After The Test Finishes
+
+    Check The server_output.log to see the results
+              client_output.log
+
+```
+
+```
 
 ## 🧾 Logs
 
@@ -64,9 +89,14 @@ Both server and client print logs to the console.
 You may redirect them to files for submission:
 
 ```bash
-python server.py > server_log.txt
-python client.py > client_log.txt
+python server.py > server_output.log
+python client.py > client_output.log
 ```
+
+## 🎥 Demo Video
+
+A short 5-minute demo of Phase 1 is available here:  
+👉 **[Demo Video Link (Replace this with your URL)]**
 
 ## 🧠 Notes
 
