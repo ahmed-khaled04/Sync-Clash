@@ -3,8 +3,8 @@ import time
 
 #Server Settings
 
-SERVER_IP = "192.0.0.1"
-SERVER_PORT = 9999
+SERVER_IP = "192.168.1.102"
+SERVER_PORT = 5005
 ADDR = (SERVER_IP , SERVER_PORT)
 
 #Creating UDP Socket
@@ -18,7 +18,7 @@ print(f"[CLIENT] Sent INIT message to {ADDR}")
 
 #Send Data Messages
 for i in range(3):
-    data_msg = f"DATA: Position update {i} (x={i*2} , y={i*3})"
+    data_msg = f"DATA: Position update A7A {i}"
     client.sendto(data_msg.encode() , ADDR)
     print(f"[CLIENT] Sent: {data_msg}")
     time.sleep(1)
