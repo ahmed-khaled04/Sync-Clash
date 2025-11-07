@@ -93,10 +93,9 @@ python server.py > server_output.log
 python client.py > client_output.log
 ```
 
-## 🎥 Demo Video
+## 🎥 GitHub Repo Link
 
-A short 5-minute demo of Phase 1 is available here:  
-👉 **[Demo Video Link (Replace this with your URL)]**
+👉 **https://github.com/ahmed-khaled04/Sync-Clash**
 
 ## 🧠 Notes
 
