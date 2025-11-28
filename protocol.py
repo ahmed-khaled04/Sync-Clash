@@ -5,7 +5,7 @@ import time
 # Protocol Constants
 # -----------------------------
 
-PROTOCOL_ID = b'SYNC'    # 4-byte ASCII identifier
+PROTOCOL_ID = b'SYNC'    # 4-byte ASCII identifier for packet validation
 VERSION = 1              # 1 byte protocol version
 
 # -----------------------------
@@ -21,8 +21,8 @@ MSG_ERR      = 6  # Server → Client: Unknown / error
 # -----------------------------
 # Header and Packet Limits
 # -----------------------------
-MAX_PACKET_SIZE = 1200  # UDP-safe max size
-REDUNDANT_COUNT = 3     # Number of last snapshots to include in each packet
+MAX_PACKET_SIZE = 1200  # UDP-safe maximum packet size
+REDUNDANT_COUNT = 3     # Number of last snapshots included in each packet for redundancy
 
 # -----------------------------
 # Helper Functions
@@ -30,10 +30,17 @@ REDUNDANT_COUNT = 3     # Number of last snapshots to include in each packet
 def create_packet(msg_type, seq_num, snapshot_id, payload=b""):
     """
     Build a binary packet with header + payload
-    Header format: 4s B B I I Q I
-    protocol_id, version, msg_type, seq_num, snapshot_id, timestamp, payload_len
+
+    Header format: !4sBBIIQI
+        4s: protocol_id
+        B : version
+        B : msg_type
+        I : seq_num
+        I : snapshot_id
+        Q : timestamp (ms)
+        I : payload length
     """
-    timestamp = int(time.time() * 1000)  # milliseconds
+    timestamp = int(time.time() * 1000)  # current time in milliseconds
     payload_len = len(payload)
     header = struct.pack(
         "!4sBBIIQI", PROTOCOL_ID, VERSION, msg_type, seq_num, snapshot_id, timestamp, payload_len
@@ -43,6 +50,10 @@ def create_packet(msg_type, seq_num, snapshot_id, payload=b""):
 def parse_packet(packet):
     """
     Parse received packet and return header fields + payload
+
+    Returns:
+        dict with keys:
+            protocol_id, version, msg_type, seq_num, snapshot_id, timestamp, payload_len, payload
     """
     header_size = struct.calcsize("!4sBBIIQI")
     header = packet[:header_size]
