@@ -1,5 +1,7 @@
 import socket
 import time
+import struct
+from protocol import HEADER_FORMAT, HEADER_SIZE, MsgType, SNAPSHOT_SIZE, PROTOCOL_ID
 
 #Server Settings
 
@@ -16,19 +18,81 @@ init_msg = "INIT: Hello server, client ready!"
 client.sendto(init_msg.encode(), ADDR)
 print(f"[CLIENT] Sent INIT message to {ADDR}")
 
+#Data + Snapshot
+last_snapshot_id = -1
+
 #Send Data Messages
-for i in range(3):
-    data_msg = f"DATA: Position update (x={i*2}, y={i*3})"
-    client.sendto(data_msg.encode() , ADDR)
-    print(f"[CLIENT] Sent: {data_msg}")
-    time.sleep(1)
-
+while True:
     try:
-        data,_ = client.recvfrom(1024)
-        print("[CLIENT] recieved reply: " , data.decode())
-    except socket.timeout:
-        print("[CLIENT] no reply (timeout)")
+        packet, addr = client.recvfrom(1200)
+        recv_time_ms = int(time.time() * 1000)
 
+        # ------------------------------
+        # Parse header
+        # ------------------------------
+        if len(packet) < HEADER_SIZE:
+            print("[CLIENT] Packet too small, skipping")
+            continue
+
+        header = packet[:HEADER_SIZE]
+        (
+            protocol_id,
+            version,
+            msg_type,
+            snapshot_id,
+            seq_num,
+            timestamp_ms,
+            payload_len
+        ) = struct.unpack(HEADER_FORMAT, header)
+        # Validate protocol ID
+        if protocol_id != PROTOCOL_ID:
+            print("[CLIENT] Invalid protocol ID, skipping packet")
+            continue
+
+        # -----------------------------------------------------
+        # Handle snapshot messages
+        # -----------------------------------------------------
+        if msg_type != MsgType.SNAPSHOT:
+            print(f"[CLIENT] Received non-snapshot message: {msg_type}")
+            continue
+
+        # DROP outdated/duplicate snapshots
+        if snapshot_id <= last_snapshot_id:
+            print(f"[CLIENT] Dropped outdated snapshot {snapshot_id}")
+            continue
+
+        last_snapshot_id = snapshot_id
+
+        # -----------------------------------------------------
+        # Extract grid snapshot payload
+        # -----------------------------------------------------
+        payload = packet[HEADER_SIZE:]
+
+        if len(payload) != SNAPSHOT_SIZE:
+            print(f"[CLIENT] Invalid snapshot size: {len(payload)} (expected {SNAPSHOT_SIZE})")
+            continue
+
+        grid = list(payload)
+
+        latency = recv_time_ms - timestamp_ms
+
+        # -----------------------------------------------------
+        # Apply snapshot
+        # -----------------------------------------------------
+        print(
+            f"[CLIENT] Applied snapshot {snapshot_id} | "
+            f"seq={seq_num} | server_ts={timestamp_ms} | "
+            f"latency={latency} ms"
+        )
+
+        # You can plug the grid into the GUI or game renderer here
+        # update_grid_display(grid)
+
+    except socket.timeout:
+        print("[CLIENT] Waiting for server snapshots...")
+    except KeyboardInterrupt:
+        print("\n[CLIENT] Shutting down...")
+        break
     
 #Close Connection
 client.close()
