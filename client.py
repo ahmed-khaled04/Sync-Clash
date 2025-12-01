@@ -1,99 +1,328 @@
 import socket
 import time
 import struct
-from protocol import HEADER_FORMAT, HEADER_SIZE, MsgType, SNAPSHOT_SIZE, PROTOCOL_ID
+import tkinter as tk
+from threading import Thread
+
+from protocol import (
+    HEADER_FORMAT, HEADER_SIZE, MsgType, PROTOCOL_ID, VERSION,
+    SNAPSHOT_SIZE, EventType, EVENT_FORMAT, EVENT_SIZE
+)
+
+GRID_SIZE = 20  
+CELL_SIZE = 20   
+
+
+
+class GridUI:
+    def __init__(self, root, rows, cols):
+        self.rows = rows
+        self.cols = cols
+
+        self.canvas = tk.Canvas(
+            root,
+            width=cols * CELL_SIZE,
+            height=rows * CELL_SIZE,
+            bg="white"
+        )
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self.on_click)
+        self.click_callback = None
+
+        # Create rectangles for all cells
+        self.cells = []
+        for r in range(rows):
+            row_cells = []
+            for c in range(cols):
+                rect = self.canvas.create_rectangle(
+                    c * CELL_SIZE,
+                    r * CELL_SIZE,
+                    (c+1) * CELL_SIZE,
+                    (r+1) * CELL_SIZE,
+                    outline="gray",
+                    fill="white"
+                )
+                row_cells.append(rect)
+            self.cells.append(row_cells)
+
+    def on_click(self, event):
+        if self.click_callback is None:
+            return
+
+        # Convert pixel → grid cell index
+        col = event.x // CELL_SIZE
+        row = event.y // CELL_SIZE
+
+        # Clamp to grid size
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            self.click_callback(row, col) 
+
+    
+    def set_click_callback(self, callback):
+        self.click_callback = callback
+
+    def update_grid(self, snapshot):
+        if len(snapshot) != self.rows or any(len(r) != self.cols for r in snapshot):
+            print("[UI] malformed snapshot received, ignoring")
+            return
+
+        for r in range(self.rows):
+            for c in range(self.cols):
+                val = int(snapshot[r][c]) 
+
+                if val == 0:
+                    # Empty cell
+                    color = "white"
+                elif val == player_id_global:
+                    # This player's cells
+                    color = "#%02x%02x%02x" % player_color
+                else:
+                    # Other player (light gray)
+                    color = "#cccccc"
+
+                self.canvas.itemconfig(self.cells[r][c], fill=color)
+
+
+
+def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
+    return struct.pack(
+        HEADER_FORMAT,
+        PROTOCOL_ID,
+        VERSION,
+        msg_type,
+        snapshot_id,
+        seq_num,
+        timestamp_ms,
+        payload_len
+    )
 
 #Server Settings
-
-SERVER_IP = "192.168.187.1"
+SERVER_IP = "192.168.1.3"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP , SERVER_PORT)
+player_id_global = None
+player_color = None
+client_seq_num = 0
 
 #Creating UDP Socket
 client = socket.socket(socket.AF_INET , socket.SOCK_DGRAM)
-client.settimeout(3)
+client.settimeout(0.1)
 
-#Send INIT Message
-init_msg = "INIT: Hello server, client ready!"
-client.sendto(init_msg.encode(), ADDR)
-print(f"[CLIENT] Sent INIT message to {ADDR}")
+def intialize_client():
 
-#Data + Snapshot
-last_snapshot_id = -1
+    #Send Join Message
+    print("[CLIENT] Sending JOIN")
 
-#Send Data Messages
-while True:
+    join_header = pack_header(
+        MsgType.JOIN,
+        0,                
+        0,                
+        int(time.time() * 1000),
+        0                 
+    )
+
+    client.sendto(join_header, ADDR)
     try:
-        packet, addr = client.recvfrom(1200)
-        recv_time_ms = int(time.time() * 1000)
-
-        # ------------------------------
-        # Parse header
-        # ------------------------------
-        if len(packet) < HEADER_SIZE:
-            print("[CLIENT] Packet too small, skipping")
-            continue
-
-        header = packet[:HEADER_SIZE]
-        (
-            protocol_id,
-            version,
-            msg_type,
-            snapshot_id,
-            seq_num,
-            timestamp_ms,
-            payload_len
-        ) = struct.unpack(HEADER_FORMAT, header)
-        # Validate protocol ID
-        if protocol_id != PROTOCOL_ID:
-            print("[CLIENT] Invalid protocol ID, skipping packet")
-            continue
-
-        # -----------------------------------------------------
-        # Handle snapshot messages
-        # -----------------------------------------------------
-        if msg_type != MsgType.SNAPSHOT:
-            print(f"[CLIENT] Received non-snapshot message: {msg_type}")
-            continue
-
-        # DROP outdated/duplicate snapshots
-        if snapshot_id <= last_snapshot_id:
-            print(f"[CLIENT] Dropped outdated snapshot {snapshot_id}")
-            continue
-
-        last_snapshot_id = snapshot_id
-
-        # -----------------------------------------------------
-        # Extract grid snapshot payload
-        # -----------------------------------------------------
-        payload = packet[HEADER_SIZE:]
-
-        if len(payload) != SNAPSHOT_SIZE:
-            print(f"[CLIENT] Invalid snapshot size: {len(payload)} (expected {SNAPSHOT_SIZE})")
-            continue
-
-        grid = list(payload)
-
-        latency = recv_time_ms - timestamp_ms
-
-        # -----------------------------------------------------
-        # Apply snapshot
-        # -----------------------------------------------------
-        print(
-            f"[CLIENT] Applied snapshot {snapshot_id} | "
-            f"seq={seq_num} | server_ts={timestamp_ms} | "
-            f"latency={latency} ms"
-        )
-
-        # You can plug the grid into the GUI or game renderer here
-        # update_grid_display(grid)
-
+        packet, addr = client.recvfrom(1024)
     except socket.timeout:
-        print("[CLIENT] Waiting for server snapshots...")
-    except KeyboardInterrupt:
-        print("\n[CLIENT] Shutting down...")
-        break
+        print("[CLIENT] No JOIN_ACK received (timeout)")
+        exit()
+
+    # Parse JOIN_ACK
+    header = packet[:HEADER_SIZE]
+    (
+        protocol_id,
+        version,
+        msg_type,
+        snapshot_id,
+        seq_num,
+        timestamp_ms,
+        payload_len
+    ) = struct.unpack(HEADER_FORMAT, header)
+
+    if msg_type != MsgType.JOIN_ACK:
+        print("[CLIENT] Expected JOIN_ACK but got something else")
+        exit()
+
+    payload = packet[HEADER_SIZE:]
+
+    player_id, grid_size, tick_rate ,  r, g, b = struct.unpack("!HBBBBB", payload)
+
+    global player_color
+
+    player_color = (r , g , b)
+
+
+    print(f"[CLIENT] JOIN_ACK received:")
+    print(f"  player_id = {player_id}")
+    print(f"  grid_size = {grid_size}")
+    print(f"  tick_rate = {tick_rate}")
+    print(f"  player_color = {player_color}")
+
+    global player_id_global
+
+    player_id_global = player_id
+
+    # Send Ready To Recieve SnapShots message
+
+    ready_header = pack_header(
+        MsgType.READY,
+        0,                
+        0,            
+        int(time.time() * 1000),
+        0    
+    )
+
+    client.sendto(ready_header, ADDR)
+    print("[Client] READY SENT")
+
+
+
+
+def listen_for_snapshots(ui):
+
+    #Data + Snapshot
+    last_snapshot_id = -1
+
+    last_logged_snapshot = -1
+    LOG_EVERY_N = 10 
+
+    #Send Data Messages
+    while True:
+        try:
+            packet, addr = client.recvfrom(1200)
+            recv_time_ms = int(time.time() * 1000)
+
+            # ------------------------------
+            # Parse header
+            # ------------------------------
+            if len(packet) < HEADER_SIZE:
+                continue
+
+            header = packet[:HEADER_SIZE]
+            (
+                protocol_id,
+                version,
+                msg_type,
+                snapshot_id,
+                seq_num,
+                timestamp_ms,
+                payload_len
+            ) = struct.unpack(HEADER_FORMAT, header)
+            # Validate protocol ID
+            if protocol_id != PROTOCOL_ID:
+                continue
+
+            # -----------------------------------------------------
+            # Handle snapshot messages
+            # -----------------------------------------------------
+            if msg_type != MsgType.SNAPSHOT:
+                continue
+
+            # DROP outdated/duplicate snapshots
+            if snapshot_id <= last_snapshot_id:
+                continue
+
+            last_snapshot_id = snapshot_id
+
+            # -----------------------------------------------------
+            # Extract grid snapshot payload
+            # -----------------------------------------------------
+            payload = packet[HEADER_SIZE:]
+
+            if len(payload) != SNAPSHOT_SIZE:
+                continue
+
+            # Convert flat bytes → 20x20 string grid
+            grid = []
+            index = 0
+
+            for _ in range(GRID_SIZE):
+                row = ""
+                for _ in range(GRID_SIZE):
+                    row += str(payload[index])
+                    index += 1
+                grid.append(row)
+
+
+
+            latency = recv_time_ms - timestamp_ms
+
+            # -----------------------------------------------------
+            # Apply snapshot
+            # -----------------------------------------------------
+            ui.canvas.after(0, ui.update_grid, grid)
+
+            if (last_logged_snapshot == -1) or (snapshot_id - last_logged_snapshot >= LOG_EVERY_N):
+                print(
+                    f"[CLIENT] Applied snapshot {snapshot_id} | "
+                    f"seq={seq_num} | server_ts={timestamp_ms} | "
+                    f"latency={latency} ms"
+                )
+                last_logged_snapshot = snapshot_id
+
+
+        except socket.timeout:
+            continue
+        except KeyboardInterrupt:
+            print("\n[CLIENT] Shutting down...")
+            break
+
+
+def send_click_event(row, col, player_id):
+    global client_seq_num
+
+    cell_index = row * GRID_SIZE + col
+    now_ms = int(time.time() * 1000)
+
+    payload = struct.pack(
+        EVENT_FORMAT,
+        player_id,
+        client_seq_num,
+        EventType.CLICK,
+        cell_index,
+        now_ms
+    )
+
+    client_seq_num += 1
+
+    header = pack_header(
+        MsgType.EVENT,          
+        0,
+        client_seq_num,
+        now_ms,
+        len(payload)
+    )
+
+    client.sendto(header + payload, ADDR)
+
+    print(f"[CLIENT] CLICK event sent (row={row}, col={col}, cell={cell_index})")
+
+
+
     
-#Close Connection
-client.close()
-print("[CLIENT] Connection Closed")
+
+def start_ui():
+    root = tk.Tk()
+    root.title("Grid")
+
+    rows = 20
+    cols = 20
+
+    ui = GridUI(root, rows, cols)
+    ui.set_click_callback(lambda r, c: send_click_event(r, c, player_id_global))
+
+    # Thread to receive snapshots
+    t = Thread(target=listen_for_snapshots, args=(ui,), daemon=True)
+    t.start()
+
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    intialize_client()
+    start_ui()
+
+    #Close Connection
+    client.close()
+    print("[CLIENT] Connection Closed")
