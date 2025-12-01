@@ -17,7 +17,7 @@ from enum import IntEnum
 # ---------------------------------------------------------
 
 PROTOCOL_ID = b"GSCP"   # 4 bytes (Grid Sync Clash)
-VERSION = 1            # 1 byte protocol version
+VERSION = 2           # 1 byte protocol version
 
 # ---------------------------------------------------------
 # Message Types
@@ -28,8 +28,9 @@ class MsgType(IntEnum):
     JOIN_ACK = 1      # Server → Client
     EVENT = 2         # Client → Server
     SNAPSHOT = 3      # Server → Client
-    HEARTBEAT = 4
-    ERROR = 5
+    READY = 4
+    HEARTBEAT = 5
+    ERROR = 6
 
 # ---------------------------------------------------------
 # Header Structure
@@ -69,8 +70,12 @@ EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
 #   player_id    2 bytes
 #   grid_size    1 byte
 #   tick_rate    1 byte
+#   color_r      1 byte
+#   color_g      1 byte
+#   color_b      1 byte
 
-JOIN_ACK_FORMAT = "!H B B"
+
+JOIN_ACK_FORMAT = "!H B B B B B"
 JOIN_ACK_SIZE = struct.calcsize(JOIN_ACK_FORMAT)
 
 # ---------------------------------------------------------
