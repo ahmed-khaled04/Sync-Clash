@@ -20,10 +20,14 @@ print(f"[SERVER] Listening on {ADDR}")
 # ----------------------------
 # Player Storage
 # ----------------------------
+
+GRID_SIZE = 20
 players = {}           # player_id -> {'addr':(ip,port), 'x':0, 'y':0}
 next_player_id = 1
 snapshot_id = 0
 seq_num = 0
+
+grid_owner = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
 
 snapshots_history = []  # store last REDUNDANT_COUNT binary snapshots
 
@@ -96,19 +100,33 @@ def handle_clients():
                 player_id = next_player_id
                 next_player_id += 1
                 players[player_id] = {'addr': addr, 'x':None, 'y':None}
-                reply = create_packet(MSG_ACK, parsed["seq_num"], parsed["snapshot_id"], b"INIT_ACK")
+
+                reply = create_packet(
+                    MSG_ACK,
+                    parsed["seq_num"],
+                    parsed["snapshot_id"],
+                    f"PLAYER_ID:{player_id}".encode()
+                )
                 server.sendto(reply, addr)
                 print(f"[SERVER] Player {player_id} joined from {addr}")
 
             elif msg_type in [MSG_DATA, MSG_EVENT]:
                 pid = next((k for k,v in players.items() if v['addr']==addr), None)
-                if pid:
+                if pid: 
                     payload = parsed["payload"]
                     try:
                         x, y = map(int, payload.decode().split(","))
                     except:
                         x, y = players[pid]['x'], players[pid]['y']
 
+                    # Prevent clicking taken cells
+                    if grid_owner[y][x] is not None and grid_owner[y][x] != pid:
+                        err_packet = create_packet(MSG_ACK, parsed["seq_num"], parsed["snapshot_id"], b"CELL_TAKEN")
+                        server.sendto(err_packet, addr)
+                        continue
+
+                    # Accept move
+                    grid_owner[y][x] = pid
                     players[pid]['x'] = x
                     players[pid]['y'] = y
 

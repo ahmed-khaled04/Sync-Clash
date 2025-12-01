@@ -20,6 +20,9 @@ last_snapshot_id = -1
 snapshots_history = []  # store last K snapshots
 player_positions = {}  # player_id -> (x, y)
 
+# GUI will read this to display warnings
+last_error = None
+
 PLAYER_COLORS = {
     1: (0, 100, 255),
     2: (255, 100, 0),
@@ -87,7 +90,7 @@ threading.Thread(target=retry_events_loop, daemon=True).start()
 # Receive Loop
 # ----------------------------
 def receive_loop(callback=None):
-    global player_id, last_snapshot_id, snapshots_history
+    global player_id, last_snapshot_id, snapshots_history, last_error
 
     while True:
         try:
@@ -101,18 +104,26 @@ def receive_loop(callback=None):
 
             if msg_type == MSG_ACK:
                 ack_seq = parsed["seq_num"]
+                text = payload.decode()
+
+                # CASE 1: CELL_TAKEN (do not remove pending event)
+                if "CELL_TAKEN" in text:
+                    last_error = "Cell is already taken!"
+                    print("[CLIENT] ERROR: CELL_TAKEN")
+                    continue
+
                 # Remove ACKed event
                 if ack_seq in pending_events:
                     del pending_events[ack_seq]
                     print(f"[CLIENT] Received ACK for seq={ack_seq}")
 
-                # INIT_ACK handling
-                if player_id is None:
+                # CASE 2: INIT ACK → extract player_id
+                if player_id is None and "PLAYER_ID" in text:
                     try:
-                        player_id = int(payload.decode())  # Server sends "1", "2", ...
+                        player_id = int(text.split(":")[1])
                     except:
-                        player_id = 1  # fallback
-                    print(f"[CLIENT] Received INIT ACK, assigned player_id={player_id}")
+                        player_id = 1
+                    print(f"[CLIENT] Received INIT ACK → player_id = {player_id}")
 
             elif msg_type == MSG_SNAPSHOT:
                 # Ignore old snapshots
