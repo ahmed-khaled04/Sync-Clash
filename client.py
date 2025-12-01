@@ -1,11 +1,23 @@
 import socket
 import time
 import struct
-from protocol import HEADER_FORMAT, HEADER_SIZE, MsgType, SNAPSHOT_SIZE, PROTOCOL_ID
+from protocol import HEADER_FORMAT, HEADER_SIZE, MsgType, PROTOCOL_ID, VERSION
 
 #Server Settings
 
-SERVER_IP = "192.168.187.1"
+def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
+    return struct.pack(
+        HEADER_FORMAT,
+        PROTOCOL_ID,
+        VERSION,
+        msg_type,
+        snapshot_id,
+        seq_num,
+        timestamp_ms,
+        payload_len
+    )
+
+SERVER_IP = "192.168.1.3"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP , SERVER_PORT)
 
@@ -13,10 +25,50 @@ ADDR = (SERVER_IP , SERVER_PORT)
 client = socket.socket(socket.AF_INET , socket.SOCK_DGRAM)
 client.settimeout(3)
 
-#Send INIT Message
-init_msg = "INIT: Hello server, client ready!"
-client.sendto(init_msg.encode(), ADDR)
-print(f"[CLIENT] Sent INIT message to {ADDR}")
+#Send Join Message
+print("[CLIENT] Sending JOIN")
+
+join_header = pack_header(
+    MsgType.JOIN,
+    0,                
+    0,                
+    int(time.time() * 1000),
+    0                 
+)
+
+client.sendto(join_header, ADDR)
+
+try:
+    packet, addr = client.recvfrom(1024)
+except socket.timeout:
+    print("[CLIENT] No JOIN_ACK received (timeout)")
+    exit()
+
+# Parse JOIN_ACK
+header = packet[:HEADER_SIZE]
+(
+    protocol_id,
+    version,
+    msg_type,
+    snapshot_id,
+    seq_num,
+    timestamp_ms,
+    payload_len
+) = struct.unpack(HEADER_FORMAT, header)
+
+if msg_type != MsgType.JOIN_ACK:
+    print("[CLIENT] Expected JOIN_ACK but got something else")
+    exit()
+
+payload = packet[HEADER_SIZE:]
+
+player_id, grid_size, tick_rate = struct.unpack("!HBB", payload)
+
+print(f"[CLIENT] JOIN_ACK received:")
+print(f"  player_id = {player_id}")
+print(f"  grid_size = {grid_size}")
+print(f"  tick_rate = {tick_rate}")
+
 
 #Data + Snapshot
 last_snapshot_id = -1

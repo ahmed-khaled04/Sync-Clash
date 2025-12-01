@@ -24,6 +24,18 @@ Sync-Clash/
 
 ```
 
+## Packet Structure
+
+| Field Name   | Size    | Description                          |
+| ------------ | ------- | ------------------------------------ |
+| protocol_id  | 4 bytes | ASCII “GCLH” (Grid Clash Header)     |
+| version      | 1 byte  | Protocol version (1)                 |
+| msg_type     | 1 byte  | 0=JOIN,1=JOIN_ACK,2=EVENT,3=SNAPSHOT |
+| snapshot_id  | 4 bytes | Incremented by server every tick     |
+| seq_num      | 4 bytes | Per-packet sequence number           |
+| timestamp_ms | 8 bytes | Server or client send timestamp      |
+| payload_len  | 2 bytes | Size of payload                      |
+
 ## ▶️ How to Run
 
 ### 🖥️ 1. Run the Server

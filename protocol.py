@@ -16,8 +16,8 @@ from enum import IntEnum
 # Basic Protocol Info
 # ---------------------------------------------------------
 
-PROTOCOL_ID = b"GSC"   # 4 bytes (Grid Sync Clash)
-VERSION = 1.0             # 1 byte protocol version
+PROTOCOL_ID = b"GSCP"   # 4 bytes (Grid Sync Clash)
+VERSION = 1            # 1 byte protocol version
 
 # ---------------------------------------------------------
 # Message Types
