@@ -10,7 +10,8 @@ from protocol import (
     JOIN_ACK_FORMAT, JOIN_ACK_SIZE,
     GRID_SIZE,
     SNAPSHOT_SIZE , 
-    EventType, EVENT_FORMAT, EVENT_SIZE
+    EventType, EVENT_FORMAT, EVENT_SIZE,
+    PLAYER_COLOR_FORMAT
 )
 
 PLAYER_COLORS = [
@@ -27,7 +28,7 @@ def assign_color(player_id):
 
 
 # Server settings
-SERVER_IP = "192.168.1.3"
+SERVER_IP = "192.168.159.1"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP, SERVER_PORT)
 
@@ -149,6 +150,41 @@ while True:
 
             server.sendto(header + payload, client_addr)
             print(f"[SERVER] Sent JOIN_ACK to {client_addr}")
+
+            
+            for existing_pid, addr in connected_players.items():
+
+                if existing_pid == player_id:
+                    continue
+
+                cr, cg, cb = assign_color(existing_pid)
+
+                payload_old = struct.pack(PLAYER_COLOR_FORMAT,
+                                        existing_pid, cr, cg, cb)
+
+                header_old = pack_header(
+                    MsgType.PLAYER_COLOR,
+                    0, 0,
+                    int(time.time() * 1000),
+                    len(payload_old)
+                )
+
+                server.sendto(header_old + payload_old, client_addr)
+
+            color_payload = struct.pack(PLAYER_COLOR_FORMAT,
+                                        player_id,color_r,color_g,color_b)
+
+            color_header = pack_header(
+                MsgType.PLAYER_COLOR,
+                0,
+                0,
+                int(time.time()*1000),
+                len(color_payload)
+            )
+
+            #Tell Everyone This Color
+            for pid,addr in connected_players.items():
+                server.sendto(color_header+color_payload , addr)
 
         elif msg_type == MsgType.READY:
             player_id = addr_to_player.get(client_addr)

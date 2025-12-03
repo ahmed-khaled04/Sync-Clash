@@ -26,11 +26,12 @@ VERSION = 2           # 1 byte protocol version
 class MsgType(IntEnum):
     JOIN = 0          # Client → Server
     JOIN_ACK = 1      # Server → Client
-    EVENT = 2         # Client → Server
+    EVENT = 2 
     SNAPSHOT = 3      # Server → Client
     READY = 4
     HEARTBEAT = 5
     ERROR = 6
+    PLAYER_COLOR = 7
 
 # ---------------------------------------------------------
 # Header Structure
@@ -77,6 +78,17 @@ EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
 
 JOIN_ACK_FORMAT = "!H B B B B B"
 JOIN_ACK_SIZE = struct.calcsize(JOIN_ACK_FORMAT)
+
+# ---------------------------------------------------------
+# PLAYER_COLOR Payload Structure (Server → Client)
+# ---------------------------------------------------------
+#   player_id    2 bytes
+#   color_r      1 byte
+#   color_g      1 byte
+#   color_b      1 byte
+
+PLAYER_COLOR_FORMAT = "!HBBB"
+PLAYER_COLOR_SIZE = struct.calcsize(PLAYER_COLOR_FORMAT)
 
 # ---------------------------------------------------------
 # SNAPSHOT Payload Structure (Server → Client)
