@@ -10,7 +10,19 @@ from protocol import (
 )
 
 GRID_SIZE = 20  
-CELL_SIZE = 20   
+CELL_SIZE = 20 
+
+
+player_colors = {}
+
+
+def get_color_for_player(pid):
+    if pid == 0:
+        return "white"
+    if pid in player_colors:
+        r, g, b = player_colors[pid]
+        return f"#{r:02x}{g:02x}{b:02x}"
+    return "#cccccc"
 
 
 
@@ -70,17 +82,39 @@ class GridUI:
             for c in range(self.cols):
                 val = int(snapshot[r][c]) 
 
-                if val == 0:
-                    # Empty cell
-                    color = "white"
-                elif val == player_id_global:
-                    # This player's cells
-                    color = "#%02x%02x%02x" % player_color
-                else:
-                    # Other player (light gray)
-                    color = "#cccccc"
+                color = get_color_for_player(val)
 
                 self.canvas.itemconfig(self.cells[r][c], fill=color)
+
+class ColorLegend:
+    def __init__(self, root):
+        self.frame = tk.Frame(root, padx=10, pady=10)
+        self.frame.pack(side="right", fill="y")
+
+        title = tk.Label(self.frame, text="Player Colors", font=("Arial", 14, "bold"))
+        title.pack()
+
+        self.entries = {}  # pid → widgets
+
+    def update_legend(self):
+        for pid, (r, g, b) in player_colors.items():
+            color_hex = f"#{r:02x}{g:02x}{b:02x}"
+
+            if pid not in self.entries:
+                row = tk.Frame(self.frame)
+                row.pack(anchor="w", pady=2)
+
+                color_box = tk.Canvas(row, width=20, height=20, bg=color_hex)
+                color_box.pack(side="left")
+
+                label = tk.Label(row, text=f" Player {pid}")
+                label.pack(side="left")
+
+                self.entries[pid] = (color_box, label)
+            else:
+                color_box, label = self.entries[pid]
+                color_box.config(bg=color_hex)
+
 
 
 
@@ -97,7 +131,7 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
     )
 
 #Server Settings
-SERVER_IP = "192.168.1.3"
+SERVER_IP = "192.168.159.1"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP , SERVER_PORT)
 player_id_global = None
@@ -148,16 +182,14 @@ def intialize_client():
 
     player_id, grid_size, tick_rate ,  r, g, b = struct.unpack("!HBBBBB", payload)
 
-    global player_color
-
-    player_color = (r , g , b)
+    player_colors[player_id] = (r , g, b)
 
 
     print(f"[CLIENT] JOIN_ACK received:")
     print(f"  player_id = {player_id}")
     print(f"  grid_size = {grid_size}")
     print(f"  tick_rate = {tick_rate}")
-    print(f"  player_color = {player_color}")
+    print(f"  player_color = {player_colors[player_id]}")
 
     global player_id_global
 
@@ -212,6 +244,21 @@ def listen_for_snapshots(ui):
             # Validate protocol ID
             if protocol_id != PROTOCOL_ID:
                 continue
+
+            
+            #PLAYER_COLOR Messages
+            if msg_type == MsgType.PLAYER_COLOR:
+                if payload_len != 5:
+                    print("[CLIENT] Bad PLAYER_COLOR message")
+                    continue
+                
+                payload = packet[HEADER_SIZE:]
+                pid , r, g, b = struct.unpack("!HBBB" , payload)
+
+                player_colors[pid] = (r , g, b)
+                ui.legend.frame.after(0, ui.legend.update_legend)
+
+                print(f"[CLIENT] Player {pid} color updated → {player_colors[pid]}")
 
             # -----------------------------------------------------
             # Handle snapshot messages
@@ -306,10 +353,21 @@ def start_ui():
     root = tk.Tk()
     root.title("Grid")
 
-    rows = 20
-    cols = 20
+    main_frame = tk.Frame(root)
+    main_frame.pack(fill="both", expand=True)
 
-    ui = GridUI(root, rows, cols)
+    left_frame = tk.Frame(main_frame)
+    left_frame.pack(side="left")
+
+    right_frame = tk.Frame(main_frame)
+    right_frame.pack(side="right", anchor="n", padx=10, pady=10)
+
+    ui = GridUI(left_frame, GRID_SIZE, GRID_SIZE)
+
+    ui.legend = ColorLegend(right_frame)
+    ui.legend.update_legend()
+
+
     ui.set_click_callback(lambda r, c: send_click_event(r, c, player_id_global))
 
     # Thread to receive snapshots
