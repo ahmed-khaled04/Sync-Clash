@@ -31,19 +31,19 @@ def create_packet(msg_type, seq_num, snapshot_id, payload=b""):
     """
     Build a binary packet with header + payload
 
-    Header format: !4sBBIIQI
-        4s: protocol_id
-        B : version
-        B : msg_type
-        I : seq_num
-        I : snapshot_id
-        Q : timestamp (ms)
-        I : payload length
+    Header format: !4sBBIIQH
+        4s: protocol_id 4 bytes
+        B : version 1 byte
+        B : msg_type 1 byte
+        I : seq_num 4 bytes
+        I : snapshot_id 4 bytes
+        Q : timestamp (ms) 8 bytes
+        H : payload length 2 bytes
     """
     timestamp = int(time.time() * 1000)  # current time in milliseconds
     payload_len = len(payload)
     header = struct.pack(
-        "!4sBBIIQI", PROTOCOL_ID, VERSION, msg_type, seq_num, snapshot_id, timestamp, payload_len
+        "!4sBBIIQH", PROTOCOL_ID, VERSION, msg_type, seq_num, snapshot_id, timestamp, payload_len
     )
     return header + payload
 
@@ -55,10 +55,10 @@ def parse_packet(packet):
         dict with keys:
             protocol_id, version, msg_type, seq_num, snapshot_id, timestamp, payload_len, payload
     """
-    header_size = struct.calcsize("!4sBBIIQI")
+    header_size = struct.calcsize("!4sBBIIQH")
     header = packet[:header_size]
     payload = packet[header_size:]
-    protocol_id, version, msg_type, seq_num, snapshot_id, timestamp, payload_len = struct.unpack("!4sBBIIQI", header)
+    protocol_id, version, msg_type, seq_num, snapshot_id, timestamp, payload_len = struct.unpack("!4sBBIIQH", header)
     return {
         "protocol_id": protocol_id,
         "version": version,
