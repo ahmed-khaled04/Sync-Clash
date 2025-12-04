@@ -1,14 +1,54 @@
 import socket
 import time
 import struct
+import csv
+import os
 import tkinter as tk
 from threading import Thread
 from collections import deque
+
 
 from protocol import (
     HEADER_FORMAT, HEADER_SIZE, MsgType, PROTOCOL_ID, VERSION,
     SNAPSHOT_SIZE, EventType, EVENT_FORMAT, EVENT_SIZE
 )
+
+# CSV File (Logging)
+
+CSV_FILE = "client_metrics.csv"
+last_recv_time = None
+last_displayed_grid = None
+
+# Create CSV file if it does not exist
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "client_id",
+            "snapshot_id",
+            "seq_num",
+            "server_timestamp",
+            "recv_time",
+            "latency_ms",
+            "jitter_ms",
+            "perceived_position_error"
+        ])
+
+
+def compute_position_error(server_grid, client_grid):
+    if client_grid is None:
+        return 0.0
+
+    error = 0
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            if server_grid[r][c] != client_grid[r][c]:
+                error += 1
+
+    return error
+
+
+
 
 GRID_SIZE = 20  
 CELL_SIZE = 20 
@@ -35,7 +75,7 @@ def process_snapshot_buffer(ui):
 
         ui.update_grid(decoded_grid)
 
-        print(f"[SMOOTH] Applied snapshot {snapshot_id} after smoothing at: {now_ms}")
+        # print(f"[SMOOTH] Applied snapshot {snapshot_id} after smoothing at: {now_ms}")
 
     ui.canvas.after(25, process_snapshot_buffer, ui)
 
@@ -98,6 +138,7 @@ class GridUI:
         self.click_callback = callback
 
     def update_grid(self, snapshot):
+        self.last_applied_grid = snapshot
         if len(snapshot) != self.rows or any(len(r) != self.cols for r in snapshot):
             print("[UI] malformed snapshot received, ignoring")
             return
@@ -255,6 +296,9 @@ def listen_for_snapshots(ui):
     last_logged_snapshot = -1
     LOG_EVERY_N = 10 
 
+    TICK_RATE = 20
+    TICK_INTERVAL = 1.0 / TICK_RATE
+
     #Send Data Messages
     while True:
         try:
@@ -329,6 +373,33 @@ def listen_for_snapshots(ui):
             last_snapshot_id = snapshot_id
 
             latency = recv_time_ms - timestamp_ms
+
+            global last_recv_time , last_displayed_grid
+
+            if last_recv_time is None:
+                jitter = 0
+            else:
+                jitter = abs((recv_time_ms - last_recv_time ) - TICK_INTERVAL * 1000)
+            
+            last_recv_time = recv_time_ms
+
+
+            client_grid = ui.last_applied_grid if hasattr(ui , 'last_applied_grid') else None
+            pos_error = compute_position_error(decoded_new , client_grid)
+
+            #Write To CSV
+            with open(CSV_FILE, "a" , newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    player_id_global,
+                    snapshot_id,
+                    seq_num,
+                    timestamp_ms,
+                    recv_time_ms,
+                    latency,
+                    jitter,
+                    pos_error
+                ])
 
             if (last_logged_snapshot == -1) or (snapshot_id - last_logged_snapshot >= LOG_EVERY_N):
                 print(
