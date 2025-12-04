@@ -2,6 +2,9 @@ import threading
 import time
 import socket
 import struct
+import csv
+import os
+import psutil
 
 
 from protocol import (
@@ -14,6 +17,14 @@ from protocol import (
     EventType, EVENT_FORMAT, EVENT_SIZE,
     PLAYER_COLOR_FORMAT
 )
+
+
+SERVER_CSV = "server_metrics.csv"
+
+if not os.path.exists(SERVER_CSV):
+    with open(SERVER_CSV, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "cpu_percent"])
 
 PLAYER_COLORS = [
     (255,0,0),    
@@ -103,6 +114,12 @@ def snapshot_sender():
             server.sendto(packet , player_addr)
 
         snapshot_id += 1
+
+        cpu = psutil.cpu_percent(interval=None)
+        with open(SERVER_CSV, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([now_ms, cpu])
+            
 
         time.sleep(TICK_INTERVAL)
 
