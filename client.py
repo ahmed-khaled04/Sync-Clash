@@ -19,6 +19,26 @@ player_colors = {}
 snapshot_buffer = deque()
 BUFFER_DELAY_MS = 50 #Same as snapshot interval
 
+def process_snapshot_buffer(ui):
+    now_ms = int(time.time() * 1000)
+
+    if not snapshot_buffer:
+        ui.canvas.after(25, process_snapshot_buffer, ui)
+        return
+
+    snapshot_id, server_ts, decoded_grid = snapshot_buffer[0]
+
+    
+    if now_ms >= server_ts + BUFFER_DELAY_MS:
+
+        snapshot_buffer.popleft()
+
+        ui.update_grid(decoded_grid)
+
+        print(f"[SMOOTH] Applied snapshot {snapshot_id} after smoothing at: {now_ms}")
+
+    ui.canvas.after(25, process_snapshot_buffer, ui)
+
 
 def get_color_for_player(pid):
     if pid == 0:
@@ -303,7 +323,8 @@ def listen_for_snapshots(ui):
             if snapshot_id > last_snapshot_id + 1:
                 ui.canvas.after(0, ui.update_grid, decoded_old)
 
-            ui.canvas.after(0, ui.update_grid, decoded_new)
+
+            snapshot_buffer.append((snapshot_id, timestamp_ms, decoded_new))
 
             last_snapshot_id = snapshot_id
 
@@ -311,7 +332,7 @@ def listen_for_snapshots(ui):
 
             if (last_logged_snapshot == -1) or (snapshot_id - last_logged_snapshot >= LOG_EVERY_N):
                 print(
-                    f"[CLIENT] Applied snapshot {snapshot_id} | "
+                    f"[CLIENT] Buffered snapshot {snapshot_id} | "
                     f"seq={seq_num} | server_ts={timestamp_ms} | "
                     f"latency={latency} ms"
                 )
@@ -382,6 +403,7 @@ def start_ui():
     # Thread to receive snapshots
     t = Thread(target=listen_for_snapshots, args=(ui,), daemon=True)
     t.start()
+    ui.canvas.after(50 , process_snapshot_buffer , ui)
 
     root.mainloop()
 
