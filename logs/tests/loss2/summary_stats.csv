@@ -1,0 +1,4 @@
+metric,count,mean,median,p95
+latency_ms,369,4.718,1.000,6.000
+jitter_ms,369,109231.136,53.000,151.600
+position_error,1786,0.481,0.000,0.000

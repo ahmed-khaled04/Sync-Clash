@@ -9,7 +9,7 @@ CLIENT_POS_CSV = "logs/client_positions.csv"
 ERROR_CSV = "logs/position_error.csv"
 
 # Max time difference (ms) to consider positions "matching"
-MAX_TIME_DIFF_MS = 100  # can tune this
+MAX_TIME_DIFF_MS = 200  # can tune this
 
 
 def load_server_positions():
