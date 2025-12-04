@@ -3,6 +3,7 @@ import time
 import struct
 import tkinter as tk
 from threading import Thread
+from collections import deque
 
 from protocol import (
     HEADER_FORMAT, HEADER_SIZE, MsgType, PROTOCOL_ID, VERSION,
@@ -14,6 +15,9 @@ CELL_SIZE = 20
 
 
 player_colors = {}
+
+snapshot_buffer = deque()
+BUFFER_DELAY_MS = 50 #Same as snapshot interval
 
 
 def get_color_for_player(pid):
@@ -210,6 +214,18 @@ def intialize_client():
 
 
 
+def decode_snapshot(snapshot_bytes):
+    grid = []
+    index = 0
+    for _ in range(GRID_SIZE):
+        row = []
+        for _ in range(GRID_SIZE):
+            row.append(snapshot_bytes[index])
+            index += 1
+        grid.append(row)
+    return grid
+
+
 
 def listen_for_snapshots(ui):
 
@@ -270,35 +286,28 @@ def listen_for_snapshots(ui):
             if snapshot_id <= last_snapshot_id:
                 continue
 
-            last_snapshot_id = snapshot_id
-
             # -----------------------------------------------------
             # Extract grid snapshot payload
             # -----------------------------------------------------
             payload = packet[HEADER_SIZE:]
 
-            if len(payload) != SNAPSHOT_SIZE:
+            if len(payload) != SNAPSHOT_SIZE * 2:
                 continue
 
-            # Convert flat bytes → 20x20 string grid
-            grid = []
-            index = 0
+            new_snapshot_bytes = payload[:SNAPSHOT_SIZE]
+            old_snapshot_bytes = payload[SNAPSHOT_SIZE:]
 
-            for _ in range(GRID_SIZE):
-                row = ""
-                for _ in range(GRID_SIZE):
-                    row += str(payload[index])
-                    index += 1
-                grid.append(row)
+            decoded_new = decode_snapshot(new_snapshot_bytes)
+            decoded_old = decode_snapshot(old_snapshot_bytes)
 
+            if snapshot_id > last_snapshot_id + 1:
+                ui.canvas.after(0, ui.update_grid, decoded_old)
 
+            ui.canvas.after(0, ui.update_grid, decoded_new)
+
+            last_snapshot_id = snapshot_id
 
             latency = recv_time_ms - timestamp_ms
-
-            # -----------------------------------------------------
-            # Apply snapshot
-            # -----------------------------------------------------
-            ui.canvas.after(0, ui.update_grid, grid)
 
             if (last_logged_snapshot == -1) or (snapshot_id - last_logged_snapshot >= LOG_EVERY_N):
                 print(
