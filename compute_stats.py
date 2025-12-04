@@ -54,5 +54,25 @@ def main():
     print_stats("Jitter (ms)", jit)
     print_stats("Perceived position error (cells)", err)
 
+    # Also write a CSV summary
+    with open("summary_stats.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["metric", "count", "mean", "median", "p95"])
+        for name, values in [
+            ("latency_ms", lat),
+            ("jitter_ms", jit),
+            ("position_error", err),
+        ]:
+            if not values:
+                w.writerow([name, 0, "", "", ""])
+                continue
+            w.writerow([
+                name,
+                len(values),
+                f"{mean(values):.3f}",
+                f"{median(values):.3f}",
+                f"{percentile(values, 95):.3f}",
+            ])
+
 if __name__ == "__main__":
     main()
