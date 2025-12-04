@@ -45,12 +45,12 @@ snapshots_history = []  # store last REDUNDANT_COUNT binary snapshots
 # ----------------------------
 # Logging Setup
 # ----------------------------
-csv_file = open("server_log.csv", "w", newline="")
+csv_file = open("logs/server_log.csv", "w", newline="")
 csv_writer = csv.writer(csv_file)
 csv_writer.writerow(["client_id", "snapshot_id", "seq_num", "server_timestamp_ms", "recv_time_ms", "latency_ms"])
 
 # authoritative positions log
-server_pos_file = open("server_positions.csv", "w", newline="")
+server_pos_file = open("logs/server_positions.csv", "w", newline="")
 server_pos_writer = csv.writer(server_pos_file)
 server_pos_writer.writerow(["timestamp_ms", "snapshot_id", "player_id", "x", "y"])
 

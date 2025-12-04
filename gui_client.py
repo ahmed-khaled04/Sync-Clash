@@ -39,7 +39,7 @@ clock = pygame.time.Clock() # clock object to control fps
 # ----------------------------
 # Client position logging
 # ----------------------------
-client_pos_file = open("client_positions.csv", "w", newline="")
+client_pos_file = open("logs/client_positions.csv", "w", newline="")
 client_pos_writer = csv.writer(client_pos_file)
 client_pos_writer.writerow(["timestamp_ms", "player_id", "x", "y"])
 

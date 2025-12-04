@@ -48,7 +48,7 @@ PLAYER_COLORS = {
 # ----------------------------
 # Logging Setup
 # ----------------------------
-csv_file = open("client_log.csv", "w", newline="")
+csv_file = open("logs/client_log.csv", "w", newline="")
 csv_writer = csv.writer(csv_file)
 # Added jitter_ms column
 csv_writer.writerow(["snapshot_id", "seq_num", "server_timestamp_ms", "recv_time_ms", "latency_ms", "jitter_ms"])

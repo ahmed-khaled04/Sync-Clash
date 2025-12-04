@@ -44,11 +44,11 @@ def print_stats(name, values):
 
 def main():
     # From client_log.csv
-    lat = load_column("client_log.csv", "latency_ms")
-    jit = load_column("client_log.csv", "jitter_ms")
+    lat = load_column("logs/client_log.csv", "latency_ms")
+    jit = load_column("logs/client_log.csv", "jitter_ms")
 
     # From position_error.csv
-    err = load_column("position_error.csv", "error")
+    err = load_column("logs/position_error.csv", "error")
 
     print_stats("Latency (ms)", lat)
     print_stats("Jitter (ms)", jit)
