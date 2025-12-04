@@ -18,6 +18,9 @@ from protocol import (
 CSV_FILE = "client_metrics.csv"
 last_recv_time = None
 last_displayed_grid = None
+bytes_received_this_second = 0
+last_bandwidth_time = int(time.time())
+current_bandwidth_kbps = 0
 
 # Create CSV file if it does not exist
 if not os.path.exists(CSV_FILE):
@@ -31,7 +34,8 @@ if not os.path.exists(CSV_FILE):
             "recv_time",
             "latency_ms",
             "jitter_ms",
-            "perceived_position_error"
+            "perceived_position_error",
+            "bandwidth_per_client_kbps"
         ])
 
 
@@ -303,7 +307,19 @@ def listen_for_snapshots(ui):
     while True:
         try:
             packet, addr = client.recvfrom(1200)
+            
+            global bytes_received_this_second
+            bytes_received_this_second += len(packet)
+
             recv_time_ms = int(time.time() * 1000)
+
+            global last_bandwidth_time, current_bandwidth_kbps
+
+            now_sec = int(time.time())
+            if now_sec > last_bandwidth_time:
+                current_bandwidth_kbps = (bytes_received_this_second * 8) / 1000
+                bytes_received_this_second = 0
+                last_bandwidth_time = now_sec
 
             # ------------------------------
             # Parse header
@@ -398,7 +414,8 @@ def listen_for_snapshots(ui):
                     recv_time_ms,
                     latency,
                     jitter,
-                    pos_error
+                    pos_error,
+                    current_bandwidth_kbps
                 ])
 
             if (last_logged_snapshot == -1) or (snapshot_id - last_logged_snapshot >= LOG_EVERY_N):
