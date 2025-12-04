@@ -7,9 +7,13 @@ def load_column(filename, column_name):
     with open(filename, "r", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            val = row.get(column_name)
+            # Skip missing or empty values
+            if val is None or val == "":
+                continue
             try:
-                values.append(float(row[column_name]))
-            except (KeyError, ValueError):
+                values.append(float(val))
+            except ValueError:
                 continue
     return values
 
@@ -34,7 +38,8 @@ def print_stats(name, values):
     print(f"  count = {len(values)}")
     print(f"  mean  = {mean(values):.3f}")
     print(f"  median= {median(values):.3f}")
-    print(f"  p95   = {percentile(values, 95):.3f}")
+    p95 = percentile(values, 95)
+    print(f"  p95   = {p95:.3f}" if p95 is not None else "  p95   = n/a")
     print()
 
 def main():
