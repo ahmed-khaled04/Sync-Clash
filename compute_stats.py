@@ -55,7 +55,7 @@ def main():
     print_stats("Perceived position error (cells)", err)
 
     # Also write a CSV summary
-    with open("summary_stats.csv", "w", newline="") as f:
+    with open("logs/summary_stats.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["metric", "count", "mean", "median", "p95"])
         for name, values in [
