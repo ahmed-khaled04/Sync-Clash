@@ -49,6 +49,12 @@ csv_file = open("server_log.csv", "w", newline="")
 csv_writer = csv.writer(csv_file)
 csv_writer.writerow(["client_id", "snapshot_id", "seq_num", "server_timestamp_ms", "recv_time_ms", "latency_ms"])
 
+# authoritative positions log
+server_pos_file = open("server_positions.csv", "w", newline="")
+server_pos_writer = csv.writer(server_pos_file)
+server_pos_writer.writerow(["timestamp_ms", "snapshot_id", "player_id", "x", "y"])
+
+
 # ----------------------------
 # Helper Functions
 # ----------------------------
@@ -111,6 +117,12 @@ def broadcast_snapshots():
             payload = build_snapshot_payload()
             snapshots_history.append(payload)
 
+            #log authoritative positions for this snapshot
+            ts_ms = int(time.time() * 1000)
+            for pid, info in players.items():
+                if info["x"] is not None and info["y"] is not None:
+                    server_pos_writer.writerow([ts_ms, snapshot_id, pid, info["x"], info["y"]])
+            server_pos_file.flush()
             if len(snapshots_history) > REDUNDANT_COUNT:
                 snapshots_history = snapshots_history[-REDUNDANT_COUNT:]
 
@@ -204,3 +216,4 @@ threading.Thread(target=broadcast_snapshots, daemon=True).start()
 handle_clients()
 server.close()
 csv_file.close()
+server_pos_file.close()

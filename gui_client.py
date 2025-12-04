@@ -1,6 +1,8 @@
 import pygame
 import threading
 import struct
+import time
+import csv
 import client  # only import the module
 from client import (
     send_event,
@@ -33,6 +35,13 @@ pygame.init()
 screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
 pygame.display.set_caption("Sync-Clash GUI")
 clock = pygame.time.Clock() # clock object to control fps
+
+# ----------------------------
+# Client position logging
+# ----------------------------
+client_pos_file = open("client_positions.csv", "w", newline="")
+client_pos_writer = csv.writer(client_pos_file)
+client_pos_writer.writerow(["timestamp_ms", "player_id", "x", "y"])
 
 # ----------------------------
 # Game State
@@ -71,6 +80,12 @@ def snapshot_callback(payload):
         ]
         for seq in to_remove:
             del client.pending_events[seq]  # Remove ACKed moves
+
+    # log displayed positions based on this snapshot
+    ts_ms = int(time.time() * 1000)
+    for pid, (x, y) in player_positions.items():
+        client_pos_writer.writerow([ts_ms, pid, x, y])
+    client_pos_file.flush()
 
 
 # ----------------------------
@@ -235,4 +250,5 @@ while running:
 # Cleanup
 # ----------------------------
 pygame.quit()
+client_pos_file.close()
 close_client()
