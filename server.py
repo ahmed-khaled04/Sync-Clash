@@ -10,6 +10,7 @@ from protocol import (
     JOIN_ACK_FORMAT, JOIN_ACK_SIZE,
     GRID_SIZE,
     SNAPSHOT_SIZE , 
+    REDUNDANT_SNAPHOT_SIZE,
     EventType, EVENT_FORMAT, EVENT_SIZE,
     PLAYER_COLOR_FORMAT
 )
@@ -41,6 +42,7 @@ print(f"[SERVER] Listening on {ADDR}")
 #initializing snapshot
 snapshot_id = 0
 seq_num = 0
+last_snapshot_bytes = None
 
 #intialze player_id
 next_player_id = 1
@@ -70,24 +72,32 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
 
 
 def snapshot_sender():
-    global snapshot_id
+    global snapshot_id , last_snapshot_bytes
 
     print("[SERVER] Snapshot thread started ...")
 
     while True :
         now_ms = int(time.time() * 1000)
 
-        payload = bytes(grid)
+        current_payload = bytes(grid)
+
+        if last_snapshot_bytes is None:
+            combined_payload = current_payload + current_payload
+        else:
+            combined_payload = current_payload + last_snapshot_bytes
+        last_snapshot_bytes = current_payload
+
+
 
         header = pack_header(
             MsgType.SNAPSHOT,
             snapshot_id,
-            seq_num,
+            snapshot_id,
             now_ms,
-            SNAPSHOT_SIZE
+            len(combined_payload)
         )
 
-        packet = header + payload
+        packet = header + combined_payload
 
         for player_addr in connected_players.values():
             server.sendto(packet , player_addr)
