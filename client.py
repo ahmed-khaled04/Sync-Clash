@@ -13,6 +13,7 @@ from protocol import (
     MAX_PACKET_SIZE,
 )
 
+
 # ----------------------------
 # Client Setup
 # ----------------------------
@@ -49,7 +50,8 @@ PLAYER_COLORS = {
 # ----------------------------
 csv_file = open("client_log.csv", "w", newline="")
 csv_writer = csv.writer(csv_file)
-csv_writer.writerow(["snapshot_id", "seq_num", "server_timestamp_ms", "recv_time_ms", "latency_ms"])
+# Added jitter_ms column
+csv_writer.writerow(["snapshot_id", "seq_num", "server_timestamp_ms", "recv_time_ms", "latency_ms", "jitter_ms"])
 
 # ----------------------------
 # Pending Events (for retry)
@@ -107,6 +109,8 @@ def receive_loop(callback=None):
     global player_id, last_snapshot_id, snapshots_history, last_error
     global game_over, game_over_winner, game_over_scores
 
+    last_snapshot_recv_time = None  # for jitter calculation
+
     while True:
         try:
             data, addr = client.recvfrom(MAX_PACKET_SIZE)
@@ -152,7 +156,23 @@ def receive_loop(callback=None):
 
                 # Logging
                 latency = recv_time - parsed["timestamp"]
-                csv_writer.writerow([snapshot_id, parsed["seq_num"], parsed["timestamp"], recv_time, latency])
+
+                # Jitter: variation in inter-arrival times
+                if last_snapshot_recv_time is None:
+                    jitter_ms = 0
+                else:
+                    inter_arrival = recv_time - last_snapshot_recv_time
+                    jitter_ms = inter_arrival
+                last_snapshot_recv_time = recv_time
+
+                csv_writer.writerow([
+                    snapshot_id,
+                    parsed["seq_num"],
+                    parsed["timestamp"],
+                    recv_time,
+                    latency,
+                    jitter_ms,
+                ])
                 csv_file.flush()
 
                 # Call GUI callback

@@ -105,7 +105,7 @@ def draw_grid():
 def draw_players():
     """Draw player ID text only (optional)"""
     # iterate over a snapshot copy to avoid 'dictionary changed size' errors
-    for pid, (x, y) in player_positions.items():
+    for pid, (x, y) in list(player_positions.items()):
         font = pygame.font.SysFont(None, 20)
         img = font.render(str(pid), True, (0, 0, 0))
         screen.blit(img, (x*CELL_SIZE + 5, y*CELL_SIZE + 5))
