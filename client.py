@@ -2,7 +2,16 @@ import socket
 import threading
 import time
 import csv
-from protocol import create_packet, parse_packet, MSG_INIT, MSG_EVENT, MSG_SNAPSHOT, MSG_ACK, MAX_PACKET_SIZE
+from protocol import (
+    create_packet,
+    parse_packet,
+    MSG_INIT,
+    MSG_EVENT,
+    MSG_SNAPSHOT,
+    MSG_ACK,
+    MSG_GAMEOVER,  
+    MAX_PACKET_SIZE,
+)
 
 # ----------------------------
 # Client Setup
@@ -18,10 +27,15 @@ player_id = None
 seq_num = 0
 last_snapshot_id = -1
 snapshots_history = []  # store last K snapshots
-player_positions = {}  # player_id -> (x, y)
+player_positions = {}   # player_id -> (x, y)
 
 # GUI will read this to display warnings
 last_error = None
+
+# GAME OVER state (GUI will read these)
+game_over = False
+game_over_winner = None
+game_over_scores = {}  # player_id -> cells
 
 PLAYER_COLORS = {
     1: (0, 100, 255),
@@ -91,6 +105,7 @@ threading.Thread(target=retry_events_loop, daemon=True).start()
 # ----------------------------
 def receive_loop(callback=None):
     global player_id, last_snapshot_id, snapshots_history, last_error
+    global game_over, game_over_winner, game_over_scores
 
     while True:
         try:
@@ -121,7 +136,7 @@ def receive_loop(callback=None):
                 if player_id is None and "PLAYER_ID" in text:
                     try:
                         player_id = int(text.split(":")[1])
-                    except:
+                    except Exception:
                         player_id = 1
                     print(f"[CLIENT] Received INIT ACK → player_id = {player_id}")
 
@@ -143,6 +158,32 @@ def receive_loop(callback=None):
                 # Call GUI callback
                 if callback:
                     callback(payload)
+
+            elif msg_type == MSG_GAMEOVER:
+                text = payload.decode()
+                winner_id = None
+                scores = {}
+                try:
+                    parts = text.split(";")
+                    winner_part = parts[0]           # "WINNER:<id>"
+                    scores_part = parts[1]           # "SCORES:1=10,2=8,..."
+
+                    winner_id = int(winner_part.split(":")[1])
+
+                    score_str = scores_part.split(":", 1)[1]  # "1=10,2=8"
+                    if score_str:
+                        for pair in score_str.split(","):
+                            if "=" in pair:
+                                pid_str, cnt_str = pair.split("=")
+                                scores[int(pid_str)] = int(cnt_str)
+                except Exception:
+                    pass
+
+                game_over = True
+                game_over_winner = winner_id
+                game_over_scores = scores
+
+                print(f"[CLIENT] GAME OVER - winner: {winner_id}, scores: {scores}")
 
         except socket.timeout:
             continue

@@ -3,7 +3,18 @@ import threading
 import time
 import csv
 import struct
-from protocol import create_packet, parse_packet, MSG_INIT, MSG_DATA, MSG_SNAPSHOT, MSG_EVENT, MSG_ACK, MAX_PACKET_SIZE, REDUNDANT_COUNT
+from protocol import (
+    create_packet,
+    parse_packet,
+    MSG_INIT,
+    MSG_DATA,
+    MSG_SNAPSHOT,
+    MSG_EVENT,
+    MSG_ACK,
+    MSG_GAMEOVER,       
+    MAX_PACKET_SIZE,
+    REDUNDANT_COUNT,
+)
 
 # ----------------------------
 # Server Setup
@@ -49,6 +60,46 @@ def build_snapshot_payload():
             payload += struct.pack("!BBB", pid, info['x'], info['y'])
     return payload
 
+def check_and_broadcast_game_over():
+    """Check if all cells are acquired; if so, compute winner and broadcast GAME_OVER."""
+    # Check if grid is full
+    for row in range(GRID_SIZE):
+        for col in range(GRID_SIZE):
+            if grid_owner[row][col] is None:
+                return  # still cells left, no game over
+
+    # Count cells per player
+    scores = {}
+    for row in range(GRID_SIZE):
+        for col in range(GRID_SIZE):
+            owner = grid_owner[row][col]
+            if owner is not None:
+                scores[owner] = scores.get(owner, 0) + 1
+
+    if not scores:
+        return  # safety
+
+    # Determine winner (highest score)
+    winner_id = max(scores, key=scores.get)
+
+    # Build simple text payload: WINNER:<id>;SCORES:p1=c1,p2=c2,...
+    parts = [f"{pid}={count}" for pid, count in scores.items()]
+    payload_text = f"WINNER:{winner_id};SCORES:" + ",".join(parts)
+    payload = payload_text.encode()
+
+    global seq_num, snapshot_id
+    # Broadcast GAME_OVER to all players
+    for pid, info in players.items():
+        packet = create_packet(MSG_GAMEOVER, seq_num, snapshot_id, payload)
+        try:
+            server.sendto(packet, info['addr'])
+            print(f"[SERVER] Sent GAME_OVER to player {pid}")
+        except Exception as e:
+            print(f"[SERVER] Error sending GAME_OVER to {info['addr']}: {e}")
+
+# ----------------------------
+# Snapshot broadcast
+# ----------------------------
 def broadcast_snapshots():
     """
     Periodically broadcast snapshots to all players.
@@ -84,6 +135,9 @@ def broadcast_snapshots():
 
         time.sleep(0.05)  # 20 Hz
 
+# ----------------------------
+# Client handling
+# ----------------------------
 def handle_clients():
     """
     Receive client messages (INIT, DATA, EVENT)
@@ -129,6 +183,9 @@ def handle_clients():
                     grid_owner[y][x] = pid
                     players[pid]['x'] = x
                     players[pid]['y'] = y
+
+                    # After accepting move, check for GAME_OVER
+                    check_and_broadcast_game_over()
 
                     # Send ACK to client for this event
                     ack_packet = create_packet(MSG_ACK, parsed["seq_num"], parsed["snapshot_id"], b"EVENT_ACK")

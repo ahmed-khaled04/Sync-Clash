@@ -17,6 +17,7 @@ MSG_DATA     = 3  # Client → Server: Position / EVENT (Phase 1 style)
 MSG_SNAPSHOT = 4  # Server → Clients: Periodic snapshot of game state
 MSG_EVENT    = 5  # Client → Server: Player action (cell click, etc.)
 MSG_ERR      = 6  # Server → Client: Unknown / error
+MSG_GAMEOVER = 7  # Server → Client: Game over notification
 
 # -----------------------------
 # Header and Packet Limits
