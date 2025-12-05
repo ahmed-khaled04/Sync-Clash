@@ -18,6 +18,9 @@ from protocol import (
 CSV_FILE = "client_metrics.csv"
 last_recv_time = None
 last_displayed_grid = None
+bytes_received_this_second = 0
+last_bandwidth_time = int(time.time())
+current_bandwidth_kbps = 0
 
 # Create CSV file if it does not exist
 if not os.path.exists(CSV_FILE):
@@ -31,26 +34,13 @@ if not os.path.exists(CSV_FILE):
             "recv_time",
             "latency_ms",
             "jitter_ms",
-            "perceived_position_error"
+            "bandwidth_per_client_kbps"
         ])
 
 
-def compute_position_error(server_grid, client_grid):
-    if client_grid is None:
-        return 0.0
-
-    error = 0
-    for r in range(GRID_SIZE):
-        for c in range(GRID_SIZE):
-            if server_grid[r][c] != client_grid[r][c]:
-                error += 1
-
-    return error
 
 
-
-
-GRID_SIZE = 20  
+GRID_SIZE = 3 
 CELL_SIZE = 20 
 
 
@@ -58,6 +48,8 @@ player_colors = {}
 
 snapshot_buffer = deque()
 BUFFER_DELAY_MS = 50 #Same as snapshot interval
+
+click_enabled = True
 
 def process_snapshot_buffer(ui):
     now_ms = int(time.time() * 1000)
@@ -78,6 +70,22 @@ def process_snapshot_buffer(ui):
         # print(f"[SMOOTH] Applied snapshot {snapshot_id} after smoothing at: {now_ms}")
 
     ui.canvas.after(25, process_snapshot_buffer, ui)
+
+
+def show_game_over_ui(winner_id, scores):
+    msg = f"GAME OVER!\nWinner: Player {winner_id}\n\nScores:\n"
+
+    for pid, score in scores.items():
+        msg += f"Player {pid}: {score}\n"
+
+    import tkinter.messagebox as mb
+    mb.showinfo("Game Over", msg)
+
+    print(msg)
+
+    # prevent further clicks
+    global click_enabled
+    click_enabled = False
 
 
 def get_color_for_player(pid):
@@ -150,6 +158,16 @@ class GridUI:
                 color = get_color_for_player(val)
 
                 self.canvas.itemconfig(self.cells[r][c], fill=color)
+        try:
+            flat = [cell for row in snapshot for cell in row]
+            now_ms = int(time.time() * 1000)
+
+            with open("client_positions.csv", "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([player_id_global, now_ms] + flat)
+
+        except Exception as e:
+            print("[CLIENT] Error logging displayed grid:", e)
 
 class ColorLegend:
     def __init__(self, root):
@@ -303,7 +321,19 @@ def listen_for_snapshots(ui):
     while True:
         try:
             packet, addr = client.recvfrom(1200)
+            
+            global bytes_received_this_second
+            bytes_received_this_second += len(packet)
+
             recv_time_ms = int(time.time() * 1000)
+
+            global last_bandwidth_time, current_bandwidth_kbps
+
+            now_sec = int(time.time())
+            if now_sec > last_bandwidth_time:
+                current_bandwidth_kbps = (bytes_received_this_second * 8) / 1000
+                bytes_received_this_second = 0
+                last_bandwidth_time = now_sec
 
             # ------------------------------
             # Parse header
@@ -339,6 +369,22 @@ def listen_for_snapshots(ui):
                 ui.legend.frame.after(0, ui.legend.update_legend)
 
                 print(f"[CLIENT] Player {pid} color updated → {player_colors[pid]}")
+
+            elif msg_type == MsgType.GAME_OVER:
+                payload = packet[HEADER_SIZE:]
+
+                winner_id, num_players = struct.unpack("!HB", payload[:3])
+                offset = 3
+
+                scores = {}
+
+                for _ in range(num_players):
+                    pid, score = struct.unpack("!HH", payload[offset:offset+4])
+                    scores[pid] = score
+                    offset += 4
+                
+                show_game_over_ui(winner_id , scores)
+                continue
 
             # -----------------------------------------------------
             # Handle snapshot messages
@@ -383,10 +429,6 @@ def listen_for_snapshots(ui):
             
             last_recv_time = recv_time_ms
 
-
-            client_grid = ui.last_applied_grid if hasattr(ui , 'last_applied_grid') else None
-            pos_error = compute_position_error(decoded_new , client_grid)
-
             #Write To CSV
             with open(CSV_FILE, "a" , newline="") as f:
                 writer = csv.writer(f)
@@ -398,7 +440,7 @@ def listen_for_snapshots(ui):
                     recv_time_ms,
                     latency,
                     jitter,
-                    pos_error
+                    current_bandwidth_kbps
                 ])
 
             if (last_logged_snapshot == -1) or (snapshot_id - last_logged_snapshot >= LOG_EVERY_N):
@@ -418,6 +460,13 @@ def listen_for_snapshots(ui):
 
 
 def send_click_event(row, col, player_id):
+
+    global click_enabled
+
+    if not click_enabled:
+        print("[CLIENT] Click Disabled. Game Over")
+        return
+        
     global client_seq_num
 
     cell_index = row * GRID_SIZE + col

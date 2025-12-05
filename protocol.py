@@ -17,7 +17,7 @@ from enum import IntEnum
 # ---------------------------------------------------------
 
 PROTOCOL_ID = b"GSCP"   # 4 bytes (Grid Sync Clash)
-VERSION = 4             # 1 byte protocol version
+VERSION = 5             # 1 byte protocol version
 
 # ---------------------------------------------------------
 # Message Types
@@ -30,7 +30,7 @@ class MsgType(IntEnum):
     SNAPSHOT = 3      # Server → Client
     READY = 4
     HEARTBEAT = 5
-    ERROR = 6
+    GAME_OVER = 6
     PLAYER_COLOR = 7
 
 # ---------------------------------------------------------
@@ -99,10 +99,14 @@ PLAYER_COLOR_SIZE = struct.calcsize(PLAYER_COLOR_FORMAT)
 # IMPORTANT: SNAPSHOT payload size = grid_size * grid_size
 
 # Define SNAPSHOT grid size here so server/client import same value:
-GRID_SIZE = 20
+GRID_SIZE = 3
 SNAPSHOT_GRID_CELLS = GRID_SIZE * GRID_SIZE
 
 # Full snapshot payload = one byte per cell
 SNAPSHOT_SIZE = SNAPSHOT_GRID_CELLS  # 400 bytes
 REDUNDANT_SNAPHOT_SIZE = SNAPSHOT_SIZE * 2
+
+# GAME_OVER message format:
+# winner_id (H) + num_players(B) + repeating pairs of (player_id H, score H)
+GAME_OVER_HEADER = "!HB"
 

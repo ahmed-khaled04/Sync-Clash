@@ -24,7 +24,7 @@ SERVER_CSV = "server_metrics.csv"
 if not os.path.exists(SERVER_CSV):
     with open(SERVER_CSV, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["timestamp", "cpu_percent"])
+        writer.writerow(["timestamp", "cpu_percent" ,  "player_id", "sent_kbps", "recv_kbps"])
 
 PLAYER_COLORS = [
     (255,0,0),    
@@ -34,6 +34,12 @@ PLAYER_COLORS = [
     (255,0,255),  
     (0,255,255),  
 ]
+
+# Bandwidth tracking
+bytes_sent_per_player = {}        
+bytes_recv_per_player = {}    
+last_bw_time = int(time.time())
+
 
 def assign_color(player_id):
     return PLAYER_COLORS[player_id % len(PLAYER_COLORS)]
@@ -84,6 +90,7 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
 
 def snapshot_sender():
     global snapshot_id , last_snapshot_bytes
+    global last_bw_time, bytes_sent_per_player, bytes_recv_per_player
 
     print("[SERVER] Snapshot thread started ...")
 
@@ -110,18 +117,82 @@ def snapshot_sender():
 
         packet = header + combined_payload
 
-        for player_addr in connected_players.values():
+        for pid , player_addr in connected_players.items():
             server.sendto(packet , player_addr)
+            bytes_sent_per_player[pid] = bytes_sent_per_player.get(pid, 0) + len(packet)
 
         snapshot_id += 1
 
-        cpu = psutil.cpu_percent(interval=None)
-        with open(SERVER_CSV, "a", newline="") as f:
+        now_sec = int(time.time())
+
+        if now_sec > last_bw_time:
+            cpu = psutil.cpu_percent(interval=None)
+
+            with open(SERVER_CSV, "a" , newline="") as f:
+                writer = csv.writer(f)
+
+                for pid in connected_players.keys():
+                    sent_bps = bytes_sent_per_player.get(pid , 0) * 8
+                    recv_bps = bytes_recv_per_player.get(pid , 0) * 8
+
+                    sent_kbps = sent_bps / 1000
+                    recv_kbps = recv_bps / 1000
+
+                    writer.writerow([
+                        now_ms,
+                        cpu,
+                        pid,
+                        sent_kbps,
+                        recv_kbps
+                    ])
+        bytes_sent_per_player = {}
+        bytes_recv_per_player = {}
+        last_bw_time = now_sec
+        
+        with open("server_positions.csv", "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([now_ms, cpu])
+            writer.writerow([
+                snapshot_id,
+                now_ms
+            ] + list(grid))
             
 
         time.sleep(TICK_INTERVAL)
+
+def send_game_over():
+    print("[SERVER] Computing winner...")
+
+    scores = {}
+
+    for cell in grid:
+        if cell != 0:
+            scores[cell] = scores.get(cell , 0) + 1
+
+    #Determine Winner
+    winner_id = max(scores , key=scores.get)
+    num_players = len(scores)
+
+    payload = struct.pack("!HB" , winner_id , num_players)
+
+    for pid , score in scores.items():
+        payload += struct.pack("!HH" , pid , score)
+    
+    timestamp_ms = int(time.time() * 1000)
+
+    header = pack_header(
+        MsgType.GAME_OVER,
+        0,
+        0,
+        timestamp_ms,
+        len(payload)
+    )
+
+    final_packet = header + payload
+
+    for pid, player_addr in connected_players.items():
+        server.sendto(final_packet, player_addr)
+
+    print("[SERVER] GAME_OVER SENT ✔")
 
 
 
@@ -134,6 +205,10 @@ while True:
     try:
         # Receive data from client
         data, client_addr = server.recvfrom(1024)
+
+        if client_addr in addr_to_player:
+            pid = addr_to_player[client_addr]
+            bytes_recv_per_player[pid] = bytes_recv_per_player.get(pid, 0) + len(data)
         
         if len(data) < HEADER_SIZE:
             print(f"[WARN] Short packet from {client_addr}, ignoring")
@@ -241,6 +316,10 @@ while True:
 
             if event_type == EventType.CLICK and grid[row * GRID_SIZE + col] == 0:
                 grid[row * GRID_SIZE + col] = player_id
+
+                if 0 not in grid:
+                    print("[SERVER] GRID COMPLETE -- GAME OVER")
+                    send_game_over()
             
 
 
