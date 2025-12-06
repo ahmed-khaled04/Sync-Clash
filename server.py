@@ -65,6 +65,9 @@ last_snapshot_bytes = None
 next_player_id = 1
 addr_to_player = {}
 
+client_last_seen = {}
+HEARTBEAT_TIMEOUT = 3 # Seconds
+
 # Game state: 20x20 grid, each byte = cell owner (0 = unclaimed)
 grid = [0] * (GRID_SIZE * GRID_SIZE)
 
@@ -199,6 +202,25 @@ def send_game_over():
 snapshot_thread = threading.Thread(target=snapshot_sender , daemon=True)
 snapshot_thread.start()
 
+def heartbeat_monitor():
+    global HEARTBEAT_TIMEOUT , connected_players
+    while True:
+        now = time.time()
+        dead = []
+
+        for addr, last in list(client_last_seen.items()):
+            if now - last > HEARTBEAT_TIMEOUT:
+                dead.append(addr)
+
+        for d in dead:
+            print(f"[SERVER] Client {d} disconnected (heartbeat timeout)")
+            del client_last_seen[d]
+            connected_players.pop(d , None)
+
+        time.sleep(1)
+
+threading.Thread(target=heartbeat_monitor, daemon=True).start()
+
 
 
 while True:
@@ -320,9 +342,13 @@ while True:
                 if 0 not in grid:
                     print("[SERVER] GRID COMPLETE -- GAME OVER")
                     send_game_over()
+
+        elif msg_type == MsgType.HEARTBEAT:
+            client_last_seen[client_addr] = time.time()
             
 
-
+    except ConnectionResetError:
+        continue
 
     except KeyboardInterrupt:
         print("\n[SERVER] Shutting down...")

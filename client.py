@@ -40,7 +40,7 @@ if not os.path.exists(CSV_FILE):
 
 
 
-GRID_SIZE = 3 
+GRID_SIZE = 20
 CELL_SIZE = 20 
 
 
@@ -497,6 +497,24 @@ def send_click_event(row, col, player_id):
 
 
 
+def send_heartbeat():
+     while True:
+        try:
+            now_ms = int(time.time() * 1000)
+
+            header = pack_header(
+                MsgType.HEARTBEAT,
+                0,
+                0,
+                now_ms,
+                0
+            )
+
+            client.sendto(header, ADDR)
+            time.sleep(1)
+        except:
+            break
+
     
 
 def start_ui():
@@ -524,6 +542,8 @@ def start_ui():
     t = Thread(target=listen_for_snapshots, args=(ui,), daemon=True)
     t.start()
     ui.canvas.after(50 , process_snapshot_buffer , ui)
+
+    Thread(target=send_heartbeat , daemon=True).start()
 
     root.mainloop()
 
