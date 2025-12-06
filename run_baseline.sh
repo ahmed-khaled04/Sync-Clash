@@ -35,30 +35,29 @@ echo "[OK] Server running (PID $SERVER_PID)"
 
 
 
-# 3. Start client
+# 3. Start multiple clients
+echo "[INFO] Starting 4 clients..."
 
+CLIENT_PIDS=()
+for i in {1..4}; do
+    python client.py --id $i &               
+    CLIENT_PIDS+=($!)                      
+    echo "[OK] Client $i running (PID ${CLIENT_PIDS[-1]})"
+    sleep 0.2                                
+done
 
-echo "[INFO] Starting client..."
-python client.py &
-CLIENT_PID=$!
-
-echo "[OK] Client running (PID $CLIENT_PID)"
-
-
-# 4. Let test run
-
-
+echo ""
 echo "[INFO] Running baseline for $TEST_DURATION seconds..."
 sleep $TEST_DURATION
 
-
-
 # 5. Stop processes
-echo "[INFO] Stopping server and client..."
+echo "[INFO] Stopping all clients and server..."
 
-kill $CLIENT_PID 2>/dev/null
+for pid in "${CLIENT_PIDS[@]}"; do
+    kill "$pid" 2>/dev/null
+done
+
 kill $SERVER_PID 2>/dev/null
-
 sleep 1
 
 echo "[OK] Processes stopped."
