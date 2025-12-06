@@ -15,10 +15,20 @@ def load_server_positions():
 
     with open(SERVER_FILE, "r") as f:
         reader = csv.reader(f)
+
         for row in reader:
-            snapshot_id = int(row[0])
+            if not row:
+                continue
+
+            if row[0].lower().startswith("snapshot") or not row[0].isdigit():
+                continue
+
+            if len(row) != CELL_COUNT + 2:
+                print("[WARN] Skipping bad server row:", len(row))
+                continue
+
             ts = int(row[1])
-            grid_values = list(map(int, row[2: 2 + CELL_COUNT]))
+            grid_values = list(map(int, row[2:]))
 
             timestamps.append(ts)
             grids.append(grid_values)
@@ -32,10 +42,20 @@ def load_client_positions():
 
     with open(CLIENT_FILE, "r") as f:
         reader = csv.reader(f)
+
         for row in reader:
-            player_id = int(row[0])
+            if not row:
+                continue
+
+            if row[0].lower().startswith("player") or not row[0].isdigit():
+                continue
+
+            if len(row) != CELL_COUNT + 2:
+                print("[WARN] Skipping bad client row:", len(row))
+                continue
+
             ts = int(row[1])
-            grid_values = list(map(int, row[2: 2 + CELL_COUNT]))
+            grid_values = list(map(int, row[2:]))
 
             timestamps.append(ts)
             grids.append(grid_values)
@@ -91,8 +111,8 @@ def main():
     # Save results to CSV for plotting
     with open(OUTPUT_FILE, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["timestamp", "positional_error"])
 
+        writer.writerow(["timestamp", "positional_error"])
         for ts, err in zip(matched_times, errors):
             writer.writerow([ts, err])
 
