@@ -21,6 +21,7 @@ env/
 *.log
 
 *.csv
+*.png
 
 # OS/editor files
 .DS_Store
