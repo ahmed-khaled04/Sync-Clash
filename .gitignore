@@ -20,6 +20,8 @@ env/
 # Logs and runtime artifacts
 *.log
 
+*.csv
+
 # OS/editor files
 .DS_Store
 Thumbs.db
