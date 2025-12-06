@@ -112,6 +112,7 @@ class GridUI:
         self.canvas.pack()
         self.canvas.bind("<Button-1>", self.on_click)
         self.click_callback = None
+        self.last_snapshot = None
 
         # Create rectangles for all cells
         self.cells = []
@@ -146,18 +147,28 @@ class GridUI:
         self.click_callback = callback
 
     def update_grid(self, snapshot):
-        self.last_applied_grid = snapshot
         if len(snapshot) != self.rows or any(len(r) != self.cols for r in snapshot):
             print("[UI] malformed snapshot received, ignoring")
             return
 
+        if self.last_snapshot is None:
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    val = int(snapshot[r][c])
+                    color = get_color_for_player(val)
+                    self.canvas.itemconfig(self.cells[r][c], fill=color)
+            self.last_snapshot = snapshot
+            return
+
         for r in range(self.rows):
             for c in range(self.cols):
-                val = int(snapshot[r][c]) 
+                if snapshot[r][c] != self.last_snapshot[r][c]:
+                    val = int(snapshot[r][c])
+                    color = get_color_for_player(val)
+                    self.canvas.itemconfig(self.cells[r][c], fill=color)
 
-                color = get_color_for_player(val)
+        self.last_snapshot = snapshot  # store for next comparison
 
-                self.canvas.itemconfig(self.cells[r][c], fill=color)
         try:
             flat = [cell for row in snapshot for cell in row]
             now_ms = int(time.time() * 1000)
@@ -180,7 +191,7 @@ class ColorLegend:
         self.entries = {}  # pid → widgets
 
     def update_legend(self):
-        for pid, (r, g, b) in player_colors.items():
+        for pid, (r, g, b) in list(player_colors.items()):
             color_hex = f"#{r:02x}{g:02x}{b:02x}"
 
             if pid not in self.entries:
