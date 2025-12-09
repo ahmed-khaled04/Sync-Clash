@@ -46,7 +46,7 @@ def assign_color(player_id):
 
 
 # Server settings
-SERVER_IP = "127.0.0.1"
+SERVER_IP = "172.20.10.12"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP, SERVER_PORT)
 
@@ -326,22 +326,30 @@ while True:
                 print("[SERVER] Invalid Event size")
                 continue
             
-            payload = data[HEADER_SIZE : HEADER_SIZE + EVENT_SIZE]
+            payload = data[HEADER_SIZE: HEADER_SIZE + EVENT_SIZE]
 
-            player_id, client_seq, event_type, cell_index , client_ts = \
-                struct.unpack(EVENT_FORMAT , payload)
+            player_id, client_seq, event_type, cell_index, client_ts = \
+                struct.unpack(EVENT_FORMAT, payload)
             
             print(f"[SERVER] Event from player {player_id}: type={event_type}, cell={cell_index}")
 
+            # ---- SAFETY CHECK: make sure index is inside the grid ----
+            if not (0 <= cell_index < GRID_SIZE * GRID_SIZE):
+                print(f"[SERVER] ⚠ invalid cell_index {cell_index} (grid size {GRID_SIZE}x{GRID_SIZE}), ignoring")
+                continue
+
             row = cell_index // GRID_SIZE
             col = cell_index % GRID_SIZE
+            idx = row * GRID_SIZE + col
 
-            if event_type == EventType.CLICK and grid[row * GRID_SIZE + col] == 0:
-                grid[row * GRID_SIZE + col] = player_id
+            if event_type == EventType.CLICK and grid[idx] == 0:
+                grid[idx] = player_id
 
+                # check for game over
                 if 0 not in grid:
                     print("[SERVER] GRID COMPLETE -- GAME OVER")
                     send_game_over()
+
 
         elif msg_type == MsgType.HEARTBEAT:
             client_last_seen[client_addr] = time.time()

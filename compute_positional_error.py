@@ -1,5 +1,6 @@
 import csv
 import numpy as np
+import pandas as pd
 
 SERVER_FILE = "server_positions.csv"
 CLIENT_FILE = "client_positions.csv"
