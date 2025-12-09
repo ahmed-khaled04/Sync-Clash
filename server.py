@@ -46,7 +46,7 @@ def assign_color(player_id):
 
 
 # Server settings
-SERVER_IP = "172.20.10.12"
+SERVER_IP = "192.168.8.158"
 SERVER_PORT = 5005
 ADDR = (SERVER_IP, SERVER_PORT)
 

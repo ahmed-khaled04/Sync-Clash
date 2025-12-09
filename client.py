@@ -215,7 +215,7 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
 
 
 # ⚠️ Make sure this IP == SERVER_IP in your server.py
-SERVER_IP = "172.20.10.12"   # change if your server runs on another IP
+SERVER_IP = "192.168.8.158"   # change if your server runs on another IP
 SERVER_PORT = 5005
 ADDR = (SERVER_IP, SERVER_PORT)
 
