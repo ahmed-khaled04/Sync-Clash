@@ -26,7 +26,7 @@ echo "[OK] Old logs removed."
 # --------------------------------
 
 echo "[INFO] Starting server..."
-python server.py &
+python3 server.py &
 SERVER_PID=$!
 
 sleep 1
@@ -40,7 +40,7 @@ echo "[INFO] Starting 4 clients..."
 
 CLIENT_PIDS=()
 for i in {1..4}; do
-    python client.py --id $i &               
+    python3 client.py --id $i &               
     CLIENT_PIDS+=($!)                      
     echo "[OK] Client $i running (PID ${CLIENT_PIDS[-1]})"
     sleep 0.2                                
@@ -68,13 +68,13 @@ echo "[OK] Processes stopped."
 
 
 echo "[INFO] Computing positional error..."
-python compute_positional_error.py
+python3 compute_positional_error.py
 
 
 # 7. Generate summary & plots
 
 echo "[INFO] Generating metrics summary and plots..."
-python analyze_logs.py
+python3 analyze_logs.py
 
 
 echo ""

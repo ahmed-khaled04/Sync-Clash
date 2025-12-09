@@ -215,21 +215,21 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
 
 
 # ⚠️ Make sure this IP == SERVER_IP in your server.py
-SERVER_IP = "172.20.10.12"   # change if your server runs on another IP
-SERVER_PORT = 5005
+SERVER_IP = "172.20.58.252"   # change if your server runs on another IP
+SERVER_PORT = 3005
 ADDR = (SERVER_IP, SERVER_PORT)
 
 player_id_global = None
 client_seq_num = 0
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-client.settimeout(0.1)
+client.settimeout(1)
 
 
 def intialize_client():
     global player_id_global
 
-    print("[CLIENT] Sending JOIN")
+    print("[CLIENT] Sending JOIN ...")
 
     join_header = pack_header(
         MsgType.JOIN,
@@ -239,43 +239,62 @@ def intialize_client():
         0,
     )
 
-    client.sendto(join_header, ADDR)
-    try:
-        packet, addr = client.recvfrom(1024)
-    except socket.timeout:
-        print("[CLIENT] No JOIN_ACK received (timeout)")
-        exit()
+    client.settimeout(1)
 
-    if len(packet) < HEADER_SIZE:
-        print("[CLIENT] JOIN_ACK too short")
-        exit()
+    # -------------------------
+    # LOOP UNTIL JOIN_ACK RECEIVED
+    # -------------------------
+    while True:
+        try:
+            client.sendto(join_header, ADDR)
+            print("[CLIENT] JOIN sent, waiting for JOIN_ACK...")
 
-    # Parse JOIN_ACK
-    header = packet[:HEADER_SIZE]
-    (
-        protocol_id,
-        version,
-        msg_type,
-        snapshot_id,
-        seq_num,
-        timestamp_ms,
-        payload_len,
-    ) = struct.unpack(HEADER_FORMAT, header)
+            packet, addr = client.recvfrom(1024)
 
-    if msg_type != MsgType.JOIN_ACK:
-        print("[CLIENT] Expected JOIN_ACK but got something else")
-        exit()
+            if len(packet) < HEADER_SIZE:
+                print("[CLIENT] Short packet received, ignoring")
+                continue
 
+            (
+                protocol_id,
+                version,
+                msg_type,
+                snapshot_id,
+                seq_num,
+                timestamp_ms,
+                payload_len,
+            ) = struct.unpack(HEADER_FORMAT, packet[:HEADER_SIZE])
+
+            # Validate
+            if protocol_id != PROTOCOL_ID or version != VERSION:
+                print("[CLIENT] Invalid protocol/version, ignoring packet")
+                continue
+
+            if msg_type != MsgType.JOIN_ACK:
+                print(f"[CLIENT] Unexpected packet while waiting JOIN_ACK: {msg_type}")
+                continue
+
+            # ✅ JOIN_ACK RECEIVED
+            print("[CLIENT] JOIN_ACK received ✔")
+            break
+
+        except socket.timeout:
+            print("[CLIENT] JOIN timeout... retrying")
+
+    # -------------------------
+    # DECODE JOIN_ACK PAYLOAD
+    # -------------------------
     payload = packet[HEADER_SIZE:]
+
     if len(payload) < 6:
         print("[CLIENT] JOIN_ACK payload too short")
-        exit()
+        return
 
     player_id, grid_size, tick_rate, r, g, b = struct.unpack("!HBBBBB", payload)
 
     player_colors[player_id] = (r, g, b)
 
-    print(f"[CLIENT] JOIN_ACK received:")
+    print("\n[CLIENT] JOIN_ACK DETAILS:")
     print(f"  player_id = {player_id}")
     print(f"  grid_size = {grid_size}")
     print(f"  tick_rate = {tick_rate}")
@@ -283,7 +302,9 @@ def intialize_client():
 
     player_id_global = player_id
 
-    # Send READY
+    # -------------------------
+    # SEND READY (MULTIPLE TIMES FOR RELIABILITY)
+    # -------------------------
     ready_header = pack_header(
         MsgType.READY,
         0,
@@ -292,9 +313,12 @@ def intialize_client():
         0,
     )
 
-    client.sendto(ready_header, ADDR)
-    print("[CLIENT] READY SENT")
+    for i in range(3):
+        client.sendto(ready_header, ADDR)
+        print(f"[CLIENT] READY sent ({i+1}/3)")
+        time.sleep(0.1)
 
+    print("[CLIENT] READY PHASE COMPLETE ✅")
 
 def decode_snapshot(snapshot_bytes):
     grid = []
