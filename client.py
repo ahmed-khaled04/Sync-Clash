@@ -18,6 +18,8 @@ from protocol import (
     EventType,
     EVENT_FORMAT,
     EVENT_SIZE,
+    PLAYER_COLOR_ACK_FORMAT, PLAYER_COLOR_ACK_SIZE,
+    PLAYER_COLOR_FORMAT
 )
 
 # ==========================
@@ -215,7 +217,7 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
 
 
 # ⚠️ Make sure this IP == SERVER_IP in your server.py
-SERVER_IP = "172.20.58.252"   # change if your server runs on another IP
+SERVER_IP = "192.168.1.72"   # change if your server runs on another IP
 SERVER_PORT = 3005
 ADDR = (SERVER_IP, SERVER_PORT)
 
@@ -420,6 +422,34 @@ def listen_for_messages(ui):
 
                 ui.canvas.after(0, show_game_over_ui, winner_id, scores)
                 continue
+
+            if msg_type == MsgType.PLAYER_COLOR:
+                if payload_len != 5:
+                    print("[CLIENT] Bad PLAYER_COLOR payload")
+                    continue
+
+                payload = packet[HEADER_SIZE:]
+                pid, r, g, b = struct.unpack("!HBBB", payload)
+                player_colors[pid] = (r, g, b)
+
+                # update legend on UI thread
+                ui.legend.frame.after(0, ui.legend.update_legend)
+
+                print(f"[CLIENT] Player {pid} color updated → {player_colors[pid]}")
+
+                # ---- send ACK (rdt3.0 style) ----
+                ack_payload = struct.pack(PLAYER_COLOR_ACK_FORMAT, pid)
+                ack_header = struct.pack(
+                    HEADER_FORMAT,
+                    PROTOCOL_ID,
+                    VERSION,
+                    MsgType.PLAYER_COLOR_ACK,
+                    0,                 # snapshot_id not used
+                    0,                 # seq_num not used for this simple ACK
+                    int(time.time() * 1000),
+                    len(ack_payload)
+                )
+                client.sendto(ack_header + ack_payload, ADDR)
 
             # ------------- SNAPSHOT --------------------
             if msg_type != MsgType.SNAPSHOT:

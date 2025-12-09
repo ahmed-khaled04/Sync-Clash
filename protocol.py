@@ -32,6 +32,7 @@ class MsgType(IntEnum):
     HEARTBEAT = 5
     GAME_OVER = 6
     PLAYER_COLOR = 7
+    PLAYER_COLOR_ACK = 8 
 
 # ---------------------------------------------------------
 # Header Structure
@@ -109,4 +110,12 @@ REDUNDANT_SNAPHOT_SIZE = SNAPSHOT_SIZE * 2
 # GAME_OVER message format:
 # winner_id (H) + num_players(B) + repeating pairs of (player_id H, score H)
 GAME_OVER_HEADER = "!HB"
+
+
+PLAYER_COLOR_FORMAT = "!HBBB"
+PLAYER_COLOR_SIZE = struct.calcsize(PLAYER_COLOR_FORMAT)
+
+# NEW: ACK for player color (just player_id)
+PLAYER_COLOR_ACK_FORMAT = "!H"
+PLAYER_COLOR_ACK_SIZE = struct.calcsize(PLAYER_COLOR_ACK_FORMAT)
 

@@ -70,7 +70,7 @@ run_test() {
 
 
 # # ========== BASELINE ==========
-# run_test "baseline" "none"
+run_test "baseline" "none"
 
 # ========== LOSS 2% ==========
 # run_test "loss_2" "loss 2%"
@@ -79,4 +79,4 @@ run_test() {
 # run_test "loss_5" "loss 5%"
 
 # # ========== DELAY 100ms ==========
-run_test "delay_100ms" "delay 100ms"
+# run_test "delay_100ms" "delay 100ms"
