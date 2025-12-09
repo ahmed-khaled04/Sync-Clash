@@ -15,7 +15,7 @@ from protocol import (
     SNAPSHOT_SIZE , 
     REDUNDANT_SNAPHOT_SIZE,
     EventType, EVENT_FORMAT, EVENT_SIZE,
-    PLAYER_COLOR_FORMAT
+    PLAYER_COLOR_FORMAT, PLAYER_COLOR_ACK_FORMAT, PLAYER_COLOR_ACK_SIZE 
 )
 
 
@@ -35,6 +35,14 @@ PLAYER_COLORS = [
     (0,255,255),  
 ]
 
+player_color_map = {}
+
+COLOR_TIMEOUT_MS = 500  # retransmit after 0.5s if no ACK
+
+# key = (client_addr, player_id)
+# value = { "packet": bytes, "last_send": int(ms) }
+pending_color = {}
+
 # Bandwidth tracking
 bytes_sent_per_player = {}        
 bytes_recv_per_player = {}    
@@ -45,8 +53,34 @@ def assign_color(player_id):
     return PLAYER_COLORS[player_id % len(PLAYER_COLORS)]
 
 
+def send_player_color_reliable(target_addr, player_id, rgb_tuple):
+    """
+    Send PLAYER_COLOR to one client and remember it for retransmission
+    until we get PLAYER_COLOR_ACK.
+    """
+    r, g, b = rgb_tuple
+    payload = struct.pack(PLAYER_COLOR_FORMAT, player_id, r, g, b)
+
+    now_ms = int(time.time() * 1000)
+    header = pack_header(
+        MsgType.PLAYER_COLOR,
+        0,                 # snapshot_id not used here
+        0,                 # seq_num not important for this simple rdt
+        now_ms,
+        len(payload)
+    )
+
+    packet = header + payload
+    server.sendto(packet, target_addr)
+
+    pending_color[(target_addr, player_id)] = {
+        "packet": packet,
+        "last_send": now_ms,
+    }
+
+
 # Server settings
-SERVER_IP = "172.20.58.252"
+SERVER_IP = "192.168.1.72"
 SERVER_PORT = 3005
 ADDR = (SERVER_IP, SERVER_PORT)
 
@@ -162,6 +196,27 @@ def snapshot_sender():
 
         time.sleep(TICK_INTERVAL)
 
+def color_retransmit_worker():
+    while True:
+        now_ms = int(time.time() * 1000)
+        # copy keys list to avoid RuntimeError while modifying dict
+        for key in list(pending_color.keys()):
+            state = pending_color.get(key)
+            if not state:
+                continue
+
+            if now_ms - state["last_send"] >= COLOR_TIMEOUT_MS:
+                # timeout: resend packet
+                packet = state["packet"]
+                target_addr, _pid = key
+                server.sendto(packet, target_addr)
+                state["last_send"] = now_ms
+        time.sleep(0.05)  # 50ms granularity is enough
+
+# start worker
+threading.Thread(target=color_retransmit_worker, daemon=True).start()
+
+
 def send_game_over():
     print("[SERVER] Computing winner...")
 
@@ -258,6 +313,9 @@ while True:
 
             color_r, color_g, color_b = assign_color(player_id)
 
+            player_color_map[player_id] = (color_r, color_g, color_b)
+
+
             payload = struct.pack(JOIN_ACK_FORMAT, player_id, GRID_SIZE, TICK_RATE , color_r, color_g, color_b)
 
             # Build response header
@@ -276,49 +334,45 @@ while True:
             print(f"[SERVER] Sent JOIN_ACK to {client_addr}")
 
             
+            # 1) Tell the new player about existing players' colors
             for existing_pid, addr in connected_players.items():
-
                 if existing_pid == player_id:
                     continue
 
                 cr, cg, cb = assign_color(existing_pid)
+                send_player_color_reliable(client_addr, existing_pid, (cr, cg, cb))
 
-                payload_old = struct.pack(PLAYER_COLOR_FORMAT,
-                                        existing_pid, cr, cg, cb)
+            # 2) Tell everyone about the new player's color
+            for pid, addr in connected_players.items():
+                send_player_color_reliable(addr, player_id, (color_r, color_g, color_b))
 
-                header_old = pack_header(
-                    MsgType.PLAYER_COLOR,
-                    0, 0,
-                    int(time.time() * 1000),
-                    len(payload_old)
-                )
-
-                server.sendto(header_old + payload_old, client_addr)
-
-            color_payload = struct.pack(PLAYER_COLOR_FORMAT,
-                                        player_id,color_r,color_g,color_b)
-
-            color_header = pack_header(
-                MsgType.PLAYER_COLOR,
-                0,
-                0,
-                int(time.time()*1000),
-                len(color_payload)
-            )
-
-            #Tell Everyone This Color
-            for pid,addr in connected_players.items():
-                server.sendto(color_header+color_payload , addr)
 
         elif msg_type == MsgType.READY:
-            player_id = addr_to_player.get(client_addr)
+                player_id = addr_to_player.get(client_addr)
 
-            if not player_id:
-                print("[SERVER] READY from unknown client ignoring" , client_addr)
+                if not player_id:
+                    print("[SERVER] READY from unknown client, ignoring", client_addr)
+                    continue
+
+                # add to snapshot list
+                connected_players[player_id] = client_addr
+                print("[SERVER] Player added to snapshot list with id:", player_id)
+
+                # 🔥 send ALL known player colors to this client
+                now_ms = int(time.time() * 1000)
+                for pid, (r, g, b) in player_color_map.items():
+                    payload = struct.pack(PLAYER_COLOR_FORMAT, pid, r, g, b)
+                    header = pack_header(
+                        MsgType.PLAYER_COLOR,
+                        0,
+                        0,
+                        now_ms,
+                        len(payload),
+                    )
+                    server.sendto(header + payload, client_addr)
+
                 continue
-            connected_players[player_id] = client_addr
-            print("[SERVER] Player added to snapshot list with id: " , player_id)
-            continue
+
         
         elif msg_type == MsgType.EVENT:
 
@@ -353,6 +407,22 @@ while True:
 
         elif msg_type == MsgType.HEARTBEAT:
             client_last_seen[client_addr] = time.time()
+
+        elif msg_type == MsgType.PLAYER_COLOR_ACK:
+            # payload: player_id (2 bytes)
+            if len(data) < HEADER_SIZE + PLAYER_COLOR_ACK_SIZE:
+                print("[SERVER] Short PLAYER_COLOR_ACK, ignoring")
+                continue
+
+            ack_payload = data[HEADER_SIZE:HEADER_SIZE+PLAYER_COLOR_ACK_SIZE]
+            ack_pid, = struct.unpack(PLAYER_COLOR_ACK_FORMAT, ack_payload)
+
+            key = (client_addr, ack_pid)
+            if key in pending_color:
+                del pending_color[key]
+                # rdt3.0 "stop_timer" for this color
+                print(f"[SERVER] Got PLAYER_COLOR_ACK for player {ack_pid} from {client_addr}")
+            continue
             
 
     except ConnectionResetError:
