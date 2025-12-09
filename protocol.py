@@ -99,7 +99,7 @@ PLAYER_COLOR_SIZE = struct.calcsize(PLAYER_COLOR_FORMAT)
 # IMPORTANT: SNAPSHOT payload size = grid_size * grid_size
 
 # Define SNAPSHOT grid size here so server/client import same value:
-GRID_SIZE = 20
+GRID_SIZE = 10
 SNAPSHOT_GRID_CELLS = GRID_SIZE * GRID_SIZE
 
 # Full snapshot payload = one byte per cell
