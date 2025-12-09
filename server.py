@@ -46,8 +46,8 @@ def assign_color(player_id):
 
 
 # Server settings
-SERVER_IP = "192.168.8.158"
-SERVER_PORT = 5005
+SERVER_IP = "172.20.58.252"
+SERVER_PORT = 3005
 ADDR = (SERVER_IP, SERVER_PORT)
 
 # Create UDP socket
