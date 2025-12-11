@@ -4,7 +4,7 @@ import struct
 import csv
 import os
 import tkinter as tk
-from threading import Thread
+from threading import Thread , Lock
 from queue import SimpleQueue
 
 from protocol import (
@@ -29,6 +29,12 @@ from protocol import (
 snapshot_queue = SimpleQueue()
 FRAME_TIME_MS = 50      # UI refresh ~20 FPS (match TICK_RATE=20)
 MAX_QUEUE = 3           # don't let queue grow too large
+
+# Event Handling
+pending_events = {}   
+pending_lock = Lock()
+MAX_EVENT_RETRIES = 6
+EVENT_TIMEOUT_MS = 300
 
 # ==========================
 # CSV Metrics
@@ -216,9 +222,8 @@ def pack_header(msg_type, snapshot_id, seq_num, timestamp_ms, payload_len):
     )
 
 
-# ⚠️ Make sure this IP == SERVER_IP in your server.py
-SERVER_IP = "192.168.1.72"   # change if your server runs on another IP
-SERVER_PORT = 3005
+SERVER_IP = "192.168.1.3"   # change if your server runs on another IP
+SERVER_PORT = 5005
 ADDR = (SERVER_IP, SERVER_PORT)
 
 player_id_global = None
@@ -277,7 +282,7 @@ def intialize_client():
                 continue
 
             # ✅ JOIN_ACK RECEIVED
-            print("[CLIENT] JOIN_ACK received ✔")
+            print("[CLIENT] JOIN_ACK received")
             break
 
         except socket.timeout:
@@ -320,7 +325,7 @@ def intialize_client():
         print(f"[CLIENT] READY sent ({i+1}/3)")
         time.sleep(0.1)
 
-    print("[CLIENT] READY PHASE COMPLETE ✅")
+    print("[CLIENT] READY PHASE COMPLETE")
 
 def decode_snapshot(snapshot_bytes):
     grid = []
@@ -379,29 +384,6 @@ def listen_for_messages(ui):
             if protocol_id != PROTOCOL_ID or version != VERSION:
                 continue
 
-            # ------------- PLAYER_COLOR ----------------
-            if msg_type == MsgType.PLAYER_COLOR:
-                if payload_len != 5:
-                    print("[CLIENT] Bad PLAYER_COLOR payload")
-                    continue
-
-                payload = packet[HEADER_SIZE:]
-                pid, r, g, b = struct.unpack("!HBBB", payload)
-                player_colors[pid] = (r, g, b)
-
-                # update legend on UI thread
-                ui.legend.frame.after(0, ui.legend.update_legend)
-
-                print(f"[CLIENT] Player {pid} color updated → {player_colors[pid]}")
-
-                # re-render grid with new colors
-                if ui.last_snapshot is not None:
-                    ui.canvas.after(
-                        0,
-                        lambda snap=ui.last_snapshot: ui.update_grid(snap, force_full_render=True),
-                    )
-                continue
-
             # ------------- GAME_OVER -------------------
             if msg_type == MsgType.GAME_OVER:
                 payload = packet[HEADER_SIZE:]
@@ -420,7 +402,30 @@ def listen_for_messages(ui):
                     scores[pid] = score
                     offset += 4
 
+
+                # Send Game Over ACK
+                ack_payload = struct.pack("!H", player_id_global)
+
+                ack_header = pack_header(
+                    MsgType.GAME_OVER_ACK,
+                    0,       
+                    0,               
+                    int(time.time() * 1000),
+                    len(ack_payload)
+                )
+
+                client.sendto(ack_header + ack_payload, ADDR)
+                print(f"[CLIENT] Sent GAME_OVER_ACK for player {player_id_global}")
+
                 ui.canvas.after(0, show_game_over_ui, winner_id, scores)
+
+                continue
+
+            if msg_type == MsgType.EVENT_ACK:
+                ack_seq = struct.unpack("!H", packet[HEADER_SIZE:])[0]
+                with pending_lock:
+                    if ack_seq in pending_events:
+                        del pending_events[ack_seq]
                 continue
 
             if msg_type == MsgType.PLAYER_COLOR:
@@ -435,7 +440,7 @@ def listen_for_messages(ui):
                 # update legend on UI thread
                 ui.legend.frame.after(0, ui.legend.update_legend)
 
-                print(f"[CLIENT] Player {pid} color updated → {player_colors[pid]}")
+                print(f"[CLIENT] Player {pid} color updated -> {player_colors[pid]}")
 
                 # ---- send ACK (rdt3.0 style) ----
                 ack_payload = struct.pack(PLAYER_COLOR_ACK_FORMAT, pid)
@@ -556,8 +561,6 @@ def send_click_event(row, col, player_id):
         now_ms,
     )
 
-    client_seq_num += 1
-
     header = pack_header(
         MsgType.EVENT,
         0,
@@ -566,9 +569,37 @@ def send_click_event(row, col, player_id):
         len(payload),
     )
 
-    client.sendto(header + payload, ADDR)
-    print(f"[CLIENT] CLICK event sent (row={row}, col={col}, cell={cell_index})")
+    packet = header + payload
+    client.sendto(packet, ADDR)
+    print(f"[CLIENT] CLICK event sent seq={client_seq_num} (row={row}, col={col}, cell={cell_index})")
 
+    with pending_lock:
+        pending_events[client_seq_num] = {
+            "packet": packet,
+            "last_send": now_ms,
+            "tries": 1
+        }
+
+    client_seq_num += 1
+
+def event_retransmit_worker():
+    while True:
+        now = int(time.time() * 1000)
+        to_remove = []
+        with pending_lock:
+            for seq, info in list(pending_events.items()):
+                if now - info["last_send"] >= EVENT_TIMEOUT_MS:
+                    if info["tries"] >= MAX_EVENT_RETRIES:
+                        print(f"[CLIENT] Event seq={seq} reached max retries -> giving up")
+                        to_remove.append(seq)
+                        continue
+                    client.sendto(info["packet"], ADDR)
+                    info["last_send"] = now
+                    info["tries"] += 1
+        with pending_lock:
+            for seq in to_remove:
+                del pending_events[seq]
+        time.sleep(0.05)
 
 def send_heartbeat():
     while True:
@@ -606,6 +637,8 @@ def start_ui():
     ui.legend.update_legend()
 
     ui.set_click_callback(lambda r, c: send_click_event(r, c, player_id_global))
+
+    Thread(target=event_retransmit_worker, daemon=True).start()
 
     # listener thread (all network messages)
     Thread(target=listen_for_messages, args=(ui,), daemon=True).start()

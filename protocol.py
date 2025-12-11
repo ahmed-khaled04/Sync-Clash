@@ -17,7 +17,7 @@ from enum import IntEnum
 # ---------------------------------------------------------
 
 PROTOCOL_ID = b"GSCP"   # 4 bytes (Grid Sync Clash)
-VERSION = 5             # 1 byte protocol version
+VERSION = 7             # 1 byte protocol version
 
 # ---------------------------------------------------------
 # Message Types
@@ -27,12 +27,14 @@ class MsgType(IntEnum):
     JOIN = 0          # Client → Server
     JOIN_ACK = 1      # Server → Client
     EVENT = 2 
-    SNAPSHOT = 3      # Server → Client
-    READY = 4
-    HEARTBEAT = 5
+    EVENT_ACK = 3
+    SNAPSHOT = 4      # Server → Client
+    READY = 5
     GAME_OVER = 6
-    PLAYER_COLOR = 7
-    PLAYER_COLOR_ACK = 8 
+    GAME_OVER_ACK = 7
+    PLAYER_COLOR = 8
+    PLAYER_COLOR_ACK = 9 
+    HEARTBEAT = 10
 
 # ---------------------------------------------------------
 # Header Structure
@@ -110,6 +112,9 @@ REDUNDANT_SNAPHOT_SIZE = SNAPSHOT_SIZE * 2
 # GAME_OVER message format:
 # winner_id (H) + num_players(B) + repeating pairs of (player_id H, score H)
 GAME_OVER_HEADER = "!HB"
+
+GAME_OVER_ACK_FORMAT = "!H"   # player_id
+GAME_OVER_ACK_SIZE = 2
 
 
 PLAYER_COLOR_FORMAT = "!HBBB"
