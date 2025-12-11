@@ -5,6 +5,8 @@ import struct
 import csv
 import os
 import psutil
+from threading import Lock
+
 
 
 from protocol import (
@@ -15,7 +17,8 @@ from protocol import (
     SNAPSHOT_SIZE , 
     REDUNDANT_SNAPHOT_SIZE,
     EventType, EVENT_FORMAT, EVENT_SIZE,
-    PLAYER_COLOR_FORMAT, PLAYER_COLOR_ACK_FORMAT, PLAYER_COLOR_ACK_SIZE 
+    PLAYER_COLOR_FORMAT, PLAYER_COLOR_ACK_FORMAT, PLAYER_COLOR_ACK_SIZE ,
+    GAME_OVER_ACK_FORMAT,GAME_OVER_ACK_SIZE
 )
 
 
@@ -25,6 +28,9 @@ if not os.path.exists(SERVER_CSV):
     with open(SERVER_CSV, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "cpu_percent" ,  "player_id", "sent_kbps", "recv_kbps"])
+
+event_lock = Lock()
+grid_lock = Lock()
 
 PLAYER_COLORS = [
     (255,0,0),    
@@ -48,6 +54,11 @@ bytes_sent_per_player = {}
 bytes_recv_per_player = {}    
 last_bw_time = int(time.time())
 
+connected_players_last_seq = {}
+
+
+pending_game_over = {}
+GAME_OVER_TIMEOUT_MS = 500
 
 def assign_color(player_id):
     return PLAYER_COLORS[player_id % len(PLAYER_COLORS)]
@@ -80,8 +91,8 @@ def send_player_color_reliable(target_addr, player_id, rgb_tuple):
 
 
 # Server settings
-SERVER_IP = "192.168.1.72"
-SERVER_PORT = 3005
+SERVER_IP = "192.168.1.3"
+SERVER_PORT = 5005
 ADDR = (SERVER_IP, SERVER_PORT)
 
 # Create UDP socket
@@ -221,22 +232,18 @@ def send_game_over():
     print("[SERVER] Computing winner...")
 
     scores = {}
-
     for cell in grid:
         if cell != 0:
-            scores[cell] = scores.get(cell , 0) + 1
+            scores[cell] = scores.get(cell, 0) + 1
 
-    #Determine Winner
-    winner_id = max(scores , key=scores.get)
+    winner_id = max(scores, key=scores.get)
     num_players = len(scores)
 
-    payload = struct.pack("!HB" , winner_id , num_players)
+    payload = struct.pack("!HB", winner_id, num_players)
+    for pid, score in scores.items():
+        payload += struct.pack("!HH", pid, score)
 
-    for pid , score in scores.items():
-        payload += struct.pack("!HH" , pid , score)
-    
     timestamp_ms = int(time.time() * 1000)
-
     header = pack_header(
         MsgType.GAME_OVER,
         0,
@@ -245,12 +252,35 @@ def send_game_over():
         len(payload)
     )
 
-    final_packet = header + payload
+    packet = header + payload
 
-    for pid, player_addr in connected_players.items():
-        server.sendto(final_packet, player_addr)
+    # Send once immediately + register for RDT
+    for pid, addr in connected_players.items():
+        server.sendto(packet, addr)
+        pending_game_over[pid] = {
+            "packet": packet,
+            "addr": addr,
+            "last_send": timestamp_ms
+        }
 
-    print("[SERVER] GAME_OVER SENT ✔")
+    print("[SERVER] GAME_OVER SENT")
+
+def game_over_retransmit_worker():
+    while True:
+        now_ms = int(time.time() * 1000)
+
+        for pid in list(pending_game_over.keys()):
+            entry = pending_game_over.get(pid)
+            if not entry:
+                continue
+
+            if now_ms - entry["last_send"] >= GAME_OVER_TIMEOUT_MS:
+                server.sendto(entry["packet"], entry["addr"])
+                entry["last_send"] = now_ms
+
+        time.sleep(0.05)
+
+threading.Thread(target=game_over_retransmit_worker, daemon=True).start()
 
 
 
@@ -275,6 +305,20 @@ def heartbeat_monitor():
         time.sleep(1)
 
 threading.Thread(target=heartbeat_monitor, daemon=True).start()
+
+
+def send_event_ack(addr, seq):
+    payload = struct.pack("!H", seq)
+
+    header = pack_header(
+        MsgType.EVENT_ACK,
+        0,
+        seq,
+        int(time.time() * 1000),
+        len(payload)
+    )
+
+    server.sendto(header + payload, addr)
 
 
 
@@ -358,7 +402,7 @@ while True:
                 connected_players[player_id] = client_addr
                 print("[SERVER] Player added to snapshot list with id:", player_id)
 
-                # 🔥 send ALL known player colors to this client
+                #send ALL known player colors to this client
                 now_ms = int(time.time() * 1000)
                 for pid, (r, g, b) in player_color_map.items():
                     payload = struct.pack(PLAYER_COLOR_FORMAT, pid, r, g, b)
@@ -376,34 +420,55 @@ while True:
         
         elif msg_type == MsgType.EVENT:
 
-            if len(data) < HEADER_SIZE + EVENT_SIZE:
-                print("[SERVER] Invalid Event size")
-                continue
-            
-            payload = data[HEADER_SIZE: HEADER_SIZE + EVENT_SIZE]
+            payload = data[HEADER_SIZE:]
 
-            player_id, client_seq, event_type, cell_index, client_ts = \
-                struct.unpack(EVENT_FORMAT, payload)
-            
-            print(f"[SERVER] Event from player {player_id}: type={event_type}, cell={cell_index}")
-
-            # ---- SAFETY CHECK: make sure index is inside the grid ----
-            if not (0 <= cell_index < GRID_SIZE * GRID_SIZE):
-                print(f"[SERVER] ⚠ invalid cell_index {cell_index} (grid size {GRID_SIZE}x{GRID_SIZE}), ignoring")
+            if len(payload) < EVENT_SIZE:
+                print("[SERVER] Bad EVENT payload length, ignoring")
                 continue
 
-            row = cell_index // GRID_SIZE
-            col = cell_index % GRID_SIZE
-            idx = row * GRID_SIZE + col
+            try:
+                player_id, seq, event_type, cell_index, event_ts = struct.unpack(EVENT_FORMAT, payload)
+            except struct.error:
+                print("[SERVER] Failed to unpack EVENT payload, ignoring")
+                continue
 
-            if event_type == EventType.CLICK and grid[idx] == 0:
-                grid[idx] = player_id
+            mapped_pid = addr_to_player.get(client_addr)
+            if mapped_pid is None or mapped_pid != player_id:
+                print(f"[WARN] EVENT from {client_addr} with mismatched player_id {player_id} (mapped {mapped_pid}) -> ignoring")
+                continue
 
-                # check for game over
-                if 0 not in grid:
-                    print("[SERVER] GRID COMPLETE -- GAME OVER")
-                    send_game_over()
+            with event_lock:
+                last_seq = connected_players_last_seq.get(player_id, -1)
+                if seq <= last_seq:
+                    send_event_ack(client_addr, seq)
+                    continue
 
+                connected_players_last_seq[player_id] = seq
+
+                acquired = False
+                with grid_lock:
+                    if 0 <= cell_index < GRID_SIZE * GRID_SIZE:
+                        if grid[cell_index] == 0:
+                            grid[cell_index] = player_id
+                            acquired = True
+                        else:
+                            acquired = False
+                    else:
+                        # invalid cell index
+                        print("[SERVER] Invalid cell_index in event:", cell_index)
+                        # we'll still ACK to stop client's retransmit
+                        send_event_ack(client_addr, seq)
+                        continue
+
+            send_event_ack(client_addr, seq)
+
+            if 0 not in grid and not pending_game_over:
+                send_game_over()
+
+            # Track bandwidth
+            bytes_recv_per_player[player_id] = bytes_recv_per_player.get(player_id, 0) + len(data)
+
+            continue
 
         elif msg_type == MsgType.HEARTBEAT:
             client_last_seen[client_addr] = time.time()
@@ -422,6 +487,17 @@ while True:
                 del pending_color[key]
                 # rdt3.0 "stop_timer" for this color
                 print(f"[SERVER] Got PLAYER_COLOR_ACK for player {ack_pid} from {client_addr}")
+            continue
+        elif msg_type == MsgType.GAME_OVER_ACK:
+            if len(data) < HEADER_SIZE + GAME_OVER_ACK_SIZE:
+                continue
+
+            ack_payload = data[HEADER_SIZE:HEADER_SIZE + GAME_OVER_ACK_SIZE]
+            ack_pid, = struct.unpack(GAME_OVER_ACK_FORMAT, ack_payload)
+
+            if ack_pid in pending_game_over:
+                del pending_game_over[ack_pid]
+                print(f"[SERVER] Got GAME_OVER_ACK from player {ack_pid}")
             continue
             
 
