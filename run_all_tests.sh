@@ -1,9 +1,9 @@
 #!/bin/bash
 
-SERVER_CMD="python server.py"
-CLIENT_CMD="python client.py"   # modify if your client file is different
+SERVER_CMD="python -u server.py"
+CLIENT_CMD="python -u client.py"   # modify if your client file is different
 CLIENT_COUNT=4
-DURATION=15              # time to run each test in seconds
+DURATION=30              # time to run each test in seconds
 
 run_test() {
     TEST_NAME=$1
@@ -62,13 +62,13 @@ run_test() {
 
 
 # # ========== BASELINE ==========
-# run_test "baseline" 
+run_test "baseline" 
 
 # ========== LOSS 2% ==========
-# run_test "loss_2"
+run_test "loss_2"
 
 # # ========== LOSS 5% ==========
-# run_test "loss_5" 
+run_test "loss_5" 
 
 # # ========== DELAY 100ms ==========
 run_test "delay_100ms" 

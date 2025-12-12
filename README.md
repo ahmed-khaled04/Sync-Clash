@@ -1,9 +1,19 @@
-# 🕹️ Sync-Clash (Phase 1 Prototype)
+# 🕹️ Sync-Clash
 
 ## 📘 Overview
 
-**Sync-Clash v1** is a UDP-based prototype for a multiplayer synchronization protocol.  
-This Phase 1 version demonstrates simple **INIT** and **DATA** message exchange between a client and server to prove basic connectivity over UDP.
+**Sync-Clash** v7 is a UDP-based multiplayer synchronization protocol designed for the Grid Clash game.
+Phase 2 implements the full protocol, including message handling, reliability features, state synchronization, logging, and automated testing under controlled network impairments.
+
+This version includes:
+
+✔ Full snapshot broadcasting
+✔ Client-side interpolation & smoothing
+✔ Sequence and snapshot ordering
+✔ Redundant update mechanism
+✔ Logging for server & client
+✔ Automated baseline, loss, delay, and jitter tests
+✔ PCAP capture + CSV result generation
 
 ---
 
@@ -12,29 +22,35 @@ This Phase 1 version demonstrates simple **INIT** and **DATA** message exchange 
 - Python 3.8 or newer
 - Works on Windows, Linux, or WSL
 - Wireshark for viewing packets
+- Clumsy For Network Control
 
 ## 📂 File Structure
 
 ```
 Sync-Clash/
 │
-├── server.py         # Runs UDP server
-├── client.py         # Sends INIT and DATA packets
-├── run_baseline.sh   # Baseline test
+├── server.py                       # Runs UDP server
+├── client.py                       # Runs Client Game
+├── protocol.py                     # Message formats, header packing/unpacking
+├── compute_positional_error.py     # For Error Calculation
+├── analyze_logs.py                 # Sumarizes Logs
+├── run_all_tests.sh                # All Test scripts
+├── results/                        # All Test run results
+├── README.md
 
 ```
 
 ## Packet Structure
 
-| Field Name   | Size    | Description                          |
-| ------------ | ------- | ------------------------------------ |
-| protocol_id  | 4 bytes | ASCII “GCLH” (Grid Clash Header)     |
-| version      | 1 byte  | Protocol version (1)                 |
-| msg_type     | 1 byte  | 0=JOIN,1=JOIN_ACK,2=EVENT,3=SNAPSHOT |
-| snapshot_id  | 4 bytes | Incremented by server every tick     |
-| seq_num      | 4 bytes | Per-packet sequence number           |
-| timestamp_ms | 8 bytes | Server or client send timestamp      |
-| payload_len  | 2 bytes | Size of payload                      |
+| Field Name   | Size    | Description                      |
+| ------------ | ------- | -------------------------------- |
+| protocol_id  | 4 bytes | ASCII "GSCP" (Grid Clash Header) |
+| version      | 1 byte  | Protocol version (7)             |
+| msg_type     | 1 byte  | 0=JOIN,1=JOIN_ACK,2=EVENT,etc... |
+| snapshot_id  | 4 bytes | Incremented by server every tick |
+| seq_num      | 4 bytes | Per-packet sequence number       |
+| timestamp_ms | 8 bytes | Server or client send timestamp  |
+| payload_len  | 2 bytes | Size of payload                  |
 
 ## ▶️ How to Run
 
@@ -49,7 +65,7 @@ python server.py
 Expected output:
 
 ```
-[SERVER] Listening on 127.0.0.1:9999
+[SERVER] Server Snapshot Thread Started on 192.168.1.1
 ```
 
 ### 💻 2. Run the Client
@@ -63,13 +79,13 @@ python client.py
 Expected output:
 
 ```
-[CLIENT] Sent INIT message to ('127.0.0.1', 9999)
-[CLIENT] Sent: DATA: Position update 0 (x=0, y=0)
-[CLIENT] Received reply: ACK: got your message
+[CLIENT] Sending JOIN ...
+[CLIENT] JOIN sent, waiting for JOIN_ACK...
+[CLIENT] JOIN_ACK received
 ...
 ```
 
-## 🧪 Run the Automated Baseline Test
+## 🧪 Run the Automated Test
 
 This test automatically starts the server, runs the client, and saves both outputs to log files.
 It demonstrates the local baseline scenario (no loss, no delay).
@@ -80,40 +96,26 @@ Run All Commands In Bash if you are using Windows.
 
 ### 1.Make the script executable
 
-    chmod +x run_baseline.sh
+    chmod +x run_all_tests.sh
 
-### 2.Run The Test
+### 2. Open Clumsy And set The Condition of The Network
 
-    ./run_baseline.sh
+### 3.Run The Test
 
-### 3.After The Test Finishes
+    ./run_all_tests.sh
 
-    Check The server_output.log to see the results
-              client_output.log
+### 4.After The Test Finishes
+
+    Check The Results folder in the correct test you ran
+        and see the outputs and plots.
 
 ```
 
-```
-
-## 🧾 Logs
-
-Both server and client print logs to the console.  
-You may redirect them to files for submission:
-
-```bash
-python server.py > server_output.log
-python client.py > client_output.log
 ```
 
 ## 🎥 GitHub Repo Link
 
 👉 **https://github.com/ahmed-khaled04/Sync-Clash**
-
-## 🧠 Notes
-
-- The project currently runs on localhost (127.0.0.1).
-- The server replies to every message with a simple ACK.
-- No reliability or synchronization logic is implemented yet — those will come in **Phase 2**.
 
 ```
 
